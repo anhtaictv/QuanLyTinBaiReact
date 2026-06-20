@@ -1,0 +1,7 @@
+node_modules/
+build/
+frontend.txt
+.env
+.env.local
+.env.production.local
+npm-debug.log*

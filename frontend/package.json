@@ -1,0 +1,47 @@
+{
+  "name": "quanlytinbai-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "proxy": "http://localhost:5000",
+  "dependencies": {
+    "axios": "^1.15.2",
+    "docxtemplater": "^3.68.7",
+    "file-saver": "^2.0.5",
+    "googleapis": "^172.0.0",
+    "html-docx-js": "^0.3.1",
+    "mammoth": "^1.12.0",
+    "pizzip": "^3.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-quill": "^2.0.0",
+    "react-router-dom": "^6.30.3",
+    "react-scripts": "^5.0.1",
+    "react-toastify": "^8.2.0",
+    "rechart": "^0.0.1",
+    "recharts": "^3.8.1",
+    "use-sync-external-store": "^1.6.0"
+  },
+  "scripts": {
+    "start": "set NODE_OPTIONS=--openssl-legacy-provider && react-scripts start",
+    "build": "set NODE_OPTIONS=--openssl-legacy-provider && react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

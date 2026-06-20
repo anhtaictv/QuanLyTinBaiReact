@@ -1,0 +1,22 @@
+node_modules/
+
+# Secrets / credentials - KHÔNG đưa lên GitHub
+.env
+.env.*
+service-account.json
+google-token.json
+oauth-credentials.json
+
+# Dump chứa toàn bộ source + .env (script "code lay code.txt" tạo ra)
+backend.txt
+
+# Dữ liệu upload runtime, không phải source code
+uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor/tooling
+.claude/
+.vscode/
