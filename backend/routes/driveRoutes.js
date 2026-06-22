@@ -5,10 +5,11 @@ const fs       = require('fs');
 const path     = require('path');
 const { poolPromise } = require('../config/db');
 const { sendPushToUser } = require('./pushRoutes');
+const { logError } = require('../utils/errorLogger');
 
 // ── CẤU HÌNH ──────────────────────────────────────────────────────────────────
 
-const STORAGE_ROOT = 'C:\\TinBai_Storage';
+const STORAGE_ROOT = process.env.STORAGE_ROOT || path.join(__dirname, '../uploads');
 const FOLDER_ID    = process.env.GOOGLE_DRIVE_FOLDER_ID;
 const TOKEN_PATH   = path.resolve('./google-token.json');
 
@@ -115,6 +116,7 @@ router.post('/upload', async (req, res) => {
 
   } catch (err) {
     console.error('❌ [Drive] Upload lỗi:', err.message);
+    logError({ source: 'driveRoutes.upload', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
     res.status(500).json({ error: 'Lỗi upload Google Drive: ' + err.message });
   }
 });
@@ -199,6 +201,7 @@ router.post('/complete/:driveFileId', async (req, res) => {
 
   } catch (err) {
     console.error('❌ [Drive] Complete lỗi:', err.message);
+    logError({ source: 'driveRoutes.complete', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
     res.status(500).json({ error: 'Lỗi khi export file từ Drive: ' + err.message });
   }
 });

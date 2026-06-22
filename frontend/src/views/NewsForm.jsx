@@ -62,7 +62,6 @@ const NewsForm = () => {
         ten:         currentUser.FullName || currentUser.fullName || '',
         hinhAnh:     '',
         Category:    parseInt(categoryId),
-        AuthorID:    currentUser.UserID || currentUser.userID,
         StoragePath: storedPath,
         StatusID:    1
       });

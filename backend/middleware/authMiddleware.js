@@ -22,3 +22,15 @@ exports.isAdmin = (req, res, next) => {
     }
     next();
 };
+
+// Cho phép 1 danh sách role cụ thể được đi qua (dùng cho các route duyệt/khóa bài...)
+exports.requireRoles = (...roles) => {
+    const allowed = roles.map(r => r.toLowerCase());
+    return (req, res, next) => {
+        const userRole = (req.user.Role || req.user.role || '').toLowerCase();
+        if (!allowed.includes(userRole)) {
+            return res.status(403).json({ message: "Bạn không có quyền thực hiện hành động này!" });
+        }
+        next();
+    };
+};

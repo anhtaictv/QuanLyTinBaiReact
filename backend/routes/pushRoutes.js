@@ -2,6 +2,7 @@ const express      = require('express');
 const router       = express.Router();
 const webpush      = require('web-push');
 const { poolPromise, sql } = require('../config/db');
+const { logError } = require('../utils/errorLogger');
 
 // VAPID keys – tạo 1 lần bằng: npx web-push generate-vapid-keys
 // Lưu vào .env
@@ -50,6 +51,7 @@ router.post('/subscribe', async (req, res) => {
 
   } catch (err) {
     console.error('❌ [Push] Subscribe lỗi:', err.message);
+    logError({ source: 'pushRoutes.subscribe', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
     res.status(500).json({ error: err.message });
   }
 });
@@ -67,6 +69,7 @@ router.post('/unsubscribe', async (req, res) => {
       .query('DELETE FROM dbo.PushSubscriptions WHERE UserID = @UserID');
     res.json({ success: true });
   } catch (err) {
+    logError({ source: 'pushRoutes.unsubscribe', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
     res.status(500).json({ error: err.message });
   }
 });
@@ -120,14 +123,19 @@ async function sendPushToUser(userID, title, body, url = '/news') {
 // Gửi push đến tất cả người có role cụ thể
 async function sendPushToRoles(roles, title, body, url = '/news') {
   try {
-    const pool   = await poolPromise;
+    const pool    = await poolPromise;
+    const request = pool.request();
+    const placeholders = roles.map((r, i) => {
+      request.input(`role${i}`, r.toLowerCase());
+      return `@role${i}`;
+    });
+
     // Lấy tất cả user có role trong danh sách và đã đăng ký subscription
-    const result = await pool.request()
-      .query(`
+    const result = await request.query(`
         SELECT ps.UserID, ps.Subscription
         FROM dbo.PushSubscriptions ps
         JOIN dbo.Users u ON ps.UserID = u.UserID
-        WHERE LOWER(u.Role) IN (${roles.map(r => `'${r.toLowerCase()}'`).join(',')})
+        WHERE LOWER(u.Role) IN (${placeholders.join(',')})
       `);
 
     for (const row of result.recordset) {

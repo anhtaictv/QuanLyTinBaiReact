@@ -7,10 +7,9 @@ const config = {
     server: process.env.DB_SERVER || 'localhost',
     database: 'QuanLyTinBai',
     options: {
-        encrypt: false, 
+        encrypt: false,
         trustServerCertificate: true,
-        enableArithAbort: true,
-        cryptoCredentialsDetails: { minVersion: 'TLSv1' }
+        enableArithAbort: true
     },
     port: 1433
 };

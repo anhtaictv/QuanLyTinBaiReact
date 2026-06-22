@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const { poolPromise } = require('./config/db');
@@ -9,6 +10,8 @@ const fileRoutes = require('./routes/fileRoutes');
 const { verifyToken, isAdmin } = require('./middleware/authMiddleware');
 const driveRoutes = require('./routes/driveRoutes'); // ✅ chỉ require ở đây
 const pushRoutes = require('./routes/pushRoutes');
+const errorLogRoutes = require('./routes/errorLogRoutes');
+const { logError } = require('./utils/errorLogger');
 
 const app = express(); // ✅ khai báo app trước
 
@@ -19,22 +22,22 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization'],
     exposedHeaders: ['Content-Range', 'X-Content-Range']
 }));
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
-    next();
-});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Chặn brute-force đăng nhập/đăng ký: tối đa 20 request / 15 phút / IP
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Quá nhiều yêu cầu, vui lòng thử lại sau!' }
+});
+
 // --- ROUTE CÔNG KHAI ---
-app.post('/api/login', authController.login);
-app.post('/api/register', authController.register);
+app.post('/api/login', authLimiter, authController.login);
+app.post('/api/register', authLimiter, authController.register);
 app.post('/api/change-password', verifyToken, authController.changePassword);
 
 // --- ROUTE BẢO VỆ ---
@@ -42,6 +45,7 @@ app.use('/api/news', verifyToken, newsRoutes);
 app.use('/api/file', verifyToken, fileRoutes);
 app.use('/api/drive', verifyToken, driveRoutes);
 app.use('/api/push', verifyToken, pushRoutes);
+app.use('/api/errors', verifyToken, isAdmin, errorLogRoutes);
 
 
 // Lấy danh sách user cơ bản
@@ -52,6 +56,7 @@ app.get('/api/users/basic', verifyToken, async (req, res) => {
             .query('SELECT UserID, FullName FROM dbo.Users');
         res.json(result.recordset);
     } catch (err) {
+        logError({ source: 'server./api/users/basic', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: err.message });
     }
 });
@@ -65,6 +70,7 @@ app.get('/api/users', verifyToken, isAdmin, async (req, res) => {
             .query('SELECT UserID, Username, FullName, Role, RoleID, Department, Age FROM dbo.Users');
         res.json(result.recordset);
     } catch (err) {
+        logError({ source: 'server./api/users', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: err.message });
     }
 });
@@ -91,6 +97,7 @@ app.put('/api/users/:userId/role', verifyToken, isAdmin, async (req, res) => {
             .query('UPDATE dbo.Users SET Role = @r, RoleID = @rid WHERE UserID = @uid');
         res.json({ success: true, message: 'Cập nhật quyền thành công!' });
     } catch (err) {
+        logError({ source: 'server./api/users/:userId/role', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: err.message });
     }
 });
@@ -104,8 +111,17 @@ app.delete('/api/users/:userId', verifyToken, isAdmin, async (req, res) => {
             .query('DELETE FROM dbo.Users WHERE UserID = @uid');
         res.json({ success: true, message: 'Đã xóa người dùng!' });
     } catch (err) {
+        logError({ source: 'server./api/users/:userId DELETE', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: err.message });
     }
+});
+
+// Lưới an toàn: bắt các lỗi chưa được catch ở route/middleware nào khác
+app.use((err, req, res, next) => {
+    console.error('❌ [Unhandled]', err);
+    logError({ source: 'server.unhandled', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+    if (res.headersSent) return next(err);
+    res.status(500).json({ error: err.message || 'Lỗi server không xác định' });
 });
 
 // Khởi chạy

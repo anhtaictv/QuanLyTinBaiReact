@@ -4,6 +4,7 @@ const PizZip = require('pizzip');
 const fs = require('fs');
 const path = require('path');
 const { sendPushToRoles, sendPushToUser } = require('../routes/pushRoutes');
+const { logError } = require('../utils/errorLogger');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. Lấy danh sách tin
@@ -28,6 +29,7 @@ exports.getAllNews = async (req, res) => {
         const result = await request.query(query);
         res.json(result.recordset || []);
     } catch (err) {
+        logError({ source: 'newsController.getAllNews', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: err.message });
     }
 };
@@ -42,8 +44,11 @@ exports.createNews = async (req, res) => {
         const {
             tieuDe, sapo, noiDung,
             kieu, ten, hinhAnh,
-            Category, AuthorID, StoragePath, StatusID
+            Category, StoragePath, StatusID
         } = req.body;
+
+        // ✅ Lấy AuthorID từ token đã xác thực, không tin dữ liệu client gửi lên
+        const AuthorID = req.user.UserID;
 
         const pool = await poolPromise;
 
@@ -89,6 +94,7 @@ exports.createNews = async (req, res) => {
 
     } catch (err) {
         console.error('❌ [createNews] Lỗi:', err.message);
+        logError({ source: 'newsController.createNews', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: err.message });
     }
 };
@@ -126,6 +132,7 @@ exports.getDashboardStats = async (req, res) => {
         const usersResult = await pool.request().query('SELECT COUNT(*) as TotalUsers FROM dbo.Users');
         res.json({ TotalPosts: totalPosts, PostsToday: postsToday, TotalUsers: usersResult.recordset[0].TotalUsers });
     } catch (err) {
+        logError({ source: 'newsController.getDashboardStats', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: err.message });
     }
 };
@@ -142,6 +149,7 @@ exports.deleteNews = async (req, res) => {
             .query('DELETE FROM dbo.Posts WHERE PostID = @PostID');
         res.json({ success: true, message: 'Đã xóa bài!' });
     } catch (err) {
+        logError({ source: 'newsController.deleteNews', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: err.message });
     }
 };
@@ -162,6 +170,7 @@ exports.approveNews = async (req, res) => {
         res.json({ success: true, message: msg });
     } catch (err) {
         console.error('❌ [approveNews] Lỗi:', err.message);
+        logError({ source: 'newsController.approveNews', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: err.message });
     }
 };
@@ -180,6 +189,7 @@ exports.lockNews = async (req, res) => {
             .query('UPDATE dbo.Posts SET IsLocked = @IsLocked WHERE PostID = @PostID');
         res.json({ success: true, message: lock ? 'Đã khóa bài!' : 'Đã mở bài!' });
     } catch (err) {
+        logError({ source: 'newsController.lockNews', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: err.message });
     }
 };
@@ -190,7 +200,7 @@ exports.lockNews = async (req, res) => {
 exports.editorApprove = async (req, res) => {
     const { id } = req.params;
     const { editorId, storagePath, categoryName } = req.body;
-    const STORAGE_ROOT = path.resolve(process.env.STORAGE_ROOT || path.join(__dirname, '../../uploads'));
+    const STORAGE_ROOT = path.resolve(process.env.STORAGE_ROOT || path.join(__dirname, '../uploads'));
 
     try {
         const pool       = await poolPromise;
@@ -228,6 +238,7 @@ exports.editorApprove = async (req, res) => {
         res.json({ success: true, message: 'Đã duyệt bài và cập nhật file!' });
     } catch (err) {
         console.error('❌ [editorApprove] Lỗi:', err);
+        logError({ source: 'newsController.editorApprove', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: err.message });
     }
 };
@@ -254,6 +265,7 @@ exports.exportStoryboard = async (req, res) => {
         res.send(buf);
     } catch (err) {
         console.error('❌ [exportStoryboard] Lỗi:', err);
+        logError({ source: 'newsController.exportStoryboard', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: 'Lỗi xuất file Word: ' + err.message });
     }
 };
@@ -269,8 +281,12 @@ exports.exportNewsWord = async (req, res) => {
         let scriptData = {};
         try { scriptData = JSON.parse(post.Content); } catch { scriptData = { noiDung: post.Content }; }
 
-        const templatePath = path.join(__dirname, '../templates/mau_tin_bai.docx');
-        const doc = new Docxtemplater(new PizZip(fs.readFileSync(templatePath, 'binary')), { paragraphLoop: true, linebreaks: true });
+        const templatePath = path.resolve(__dirname, '../../mau_tin_bai.docx');
+        const backupPath   = path.resolve('mau_tin_bai.docx');
+        const chosenPath   = fs.existsSync(templatePath) ? templatePath : fs.existsSync(backupPath) ? backupPath : null;
+        if (!chosenPath) return res.status(404).json({ error: 'Không tìm thấy file mẫu mau_tin_bai.docx!' });
+
+        const doc = new Docxtemplater(new PizZip(fs.readFileSync(chosenPath, 'binary')), { paragraphLoop: true, linebreaks: true });
         doc.setData({ kiểu: scriptData.kieu||'Tin', TieuDe: post.Title ? post.Title.toUpperCase() : '', Ten: scriptData.ten||'', HinhAnh: scriptData.hinhAnh||'', Sapo: scriptData.sapo||'', NoiDung: scriptData.noiDung||'' });
         doc.render();
 
@@ -280,6 +296,7 @@ exports.exportNewsWord = async (req, res) => {
         return res.send(buf);
     } catch (err) {
         console.error('❌ [exportNewsWord] Lỗi:', err.message);
+        logError({ source: 'newsController.exportNewsWord', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: 'Không thể xuất file Word: ' + err.message });
     }
 };

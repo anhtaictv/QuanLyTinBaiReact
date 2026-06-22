@@ -5,8 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 
-const STORAGE_ROOT = 'C:\\TinBai_Storage';
-//const STORAGE_ROOT = process.env.STORAGE_ROOT || path.join(__dirname, '../uploads');
+const STORAGE_ROOT = process.env.STORAGE_ROOT || path.join(__dirname, '../uploads');
 
 // Cấu hình multer
 const storage = multer.diskStorage({
