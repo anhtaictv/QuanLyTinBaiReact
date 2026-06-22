@@ -1,6 +1,7 @@
-const { poolPromise } = require('../config/db'); 
-const bcrypt = require('bcrypt'); 
+const { poolPromise } = require('../config/db');
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { logError } = require('../utils/errorLogger');
 
 const SECRET_KEY = process.env.JWT_SECRET;
 
@@ -49,10 +50,11 @@ exports.register = async (req, res) => {
 
     } catch (err) {
         console.error("Lỗi đăng ký FULL:", err);
-        res.status(500).json({ 
-            success: false, 
-            message: err.message 
-        }); 
+        logError({ source: 'authController.register', message: err.message, stack: err.stack, method: req.method, path: req.originalUrl });
+        res.status(500).json({
+            success: false,
+            message: err.message
+        });
     }
 };
 
@@ -112,10 +114,11 @@ exports.login = async (req, res) => {
 
     } catch (err) {
         console.error("Lỗi login:", err);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Lỗi server' 
-        }); 
+        logError({ source: 'authController.login', message: err.message, stack: err.stack, method: req.method, path: req.originalUrl });
+        res.status(500).json({
+            success: false,
+            message: 'Lỗi server'
+        });
     }
 };
 // ================= ĐỔI MK =================
@@ -148,6 +151,7 @@ exports.changePassword = async (req, res) => {
         res.json({ success: true, message: 'Đổi mật khẩu thành công!' });
 
     } catch (err) {
+        logError({ source: 'authController.changePassword', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ success: false, message: err.message });
     }
 };
