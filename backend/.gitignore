@@ -3,6 +3,7 @@ node_modules/
 # Secrets / credentials - KHÔNG đưa lên GitHub
 .env
 .env.*
+!.env.example
 service-account.json
 google-token.json
 oauth-credentials.json
