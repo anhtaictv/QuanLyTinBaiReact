@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import useIdleLogout from '../hooks/useIdleLogout';
+import ErrorBell from '../components/ErrorBell';
 
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 phút không hoạt động thì tự đăng xuất
 
@@ -22,6 +23,7 @@ const MainLayout = () => {
   const userObj  = JSON.parse(localStorage.getItem('user'));
   const userRole = (userObj?.role || userObj?.Role || '').toLowerCase();
   const isAdminLevel = ['admin', 'trưởng ban'].includes(userRole);
+  const isAdminStrict = userRole === 'admin';
   const BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
   // ── Kiểm tra đã subscribe chưa khi mount ──────────────────────────────────
@@ -172,6 +174,7 @@ const MainLayout = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <h2 style={{ color: '#3498db', margin: 0, fontSize: '18px' }}>QUẢN LÝ TIN</h2>
         <div style={{ display: 'flex', gap: 6 }}>
+          {isAdminStrict && <ErrorBell />}
           <NotifBtn />
           <button onClick={handleRefresh} style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '18px', cursor: 'pointer' }}>🔄</button>
         </div>
@@ -260,6 +263,7 @@ const MainLayout = () => {
         </span>
 
         <div style={{ display: 'flex', gap: 6 }}>
+          {isAdminStrict && <ErrorBell />}
           <NotifBtn />
           <button onClick={handleRefresh} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', fontSize: '20px', cursor: 'pointer', width: '40px', height: '40px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             🔄
