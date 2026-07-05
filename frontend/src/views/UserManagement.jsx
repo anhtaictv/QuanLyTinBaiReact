@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import { showToastSuccess, showToastError } from '../utils/Toast';
+import { IconUsers, IconTrash } from '../components/icons';
+import LoadingState from '../components/LoadingState';
 
 const UserManagement = () => {
   const [users, setUsers] = useState([]);
@@ -46,22 +48,24 @@ const UserManagement = () => {
     }
   };
 
-  if (loading) return <div style={{ padding: 20 }}>Đang tải danh sách nhân sự...</div>;
+  if (loading) return <LoadingState label="Đang tải danh sách nhân sự..." />;
 
   return (
-    <div style={{ padding: '10px' }}>
-      <h2 style={{ color: '#2c3e50', marginBottom: '20px' }}>👥 Quản lý Nhân sự & Phân quyền</h2>
-      
-      <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', overflowX: 'auto' }}>
+    <div>
+      <h2 style={{ marginBottom: '20px', fontSize: 22, display: 'flex', alignItems: 'center', gap: 9 }}>
+        <IconUsers size={19} style={{ color: 'var(--accent)' }} />Quản lý Nhân sự &amp; Phân quyền
+      </h2>
+
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '10px', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-sm)', overflowX: 'auto' }}>
         <table style={{ width: '100%', minWidth: 800, borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee', background: '#f8f9fa' }}>
-              <th style={{ padding: '15px' }}>ID</th>
-              <th style={{ padding: '15px' }}>Thông tin User</th>
-              <th style={{ padding: '15px' }}>Phòng ban</th>
-              <th style={{ padding: '15px' }}>Vai trò hiện tại</th>
-              <th style={{ padding: '15px' }}>Thay đổi quyền</th>
-              <th style={{ padding: '15px' }}>Thao tác</th>
+            <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+              <th style={th}>ID</th>
+              <th style={th}>Thông tin User</th>
+              <th style={th}>Phòng ban</th>
+              <th style={th}>Vai trò hiện tại</th>
+              <th style={th}>Thay đổi quyền</th>
+              <th style={th}>Thao tác</th>
             </tr>
           </thead>
           <tbody>
@@ -73,27 +77,27 @@ const UserManagement = () => {
               const role = user.Role || user.role;
 
               return (
-                <tr key={uid} style={{ borderBottom: '1px solid #f1f1f1' }}>
-                  <td style={{ padding: '15px' }}>#{uid}</td>
-                  <td style={{ padding: '15px' }}>
+                <tr key={uid} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td className="mono" style={{ ...td, color: 'var(--text-muted)' }}>#{uid}</td>
+                  <td style={td}>
                     <strong>{fullName}</strong><br/>
-                    <small style={{ color: '#7f8c8d' }}>@{username}</small>
+                    <small style={{ color: 'var(--text-muted)' }}>@{username}</small>
                   </td>
-                  <td style={{ padding: '15px' }}>{department}</td>
-                  <td style={{ padding: '15px' }}>
-                    <span style={{ 
-                      padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold',
-                      background: role === 'Admin' ? '#ffebee' : '#e3f2fd',
-                      color: role === 'Admin' ? '#c62828' : '#1565c0'
+                  <td style={td}>{department}</td>
+                  <td style={td}>
+                    <span style={{
+                      padding: '4px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700,
+                      background: role === 'Admin' ? 'var(--danger-soft)' : 'var(--accent-soft)',
+                      color: role === 'Admin' ? 'var(--danger)' : 'var(--accent)'
                     }}>
                       {role}
                     </span>
                   </td>
-                  <td style={{ padding: '15px' }}>
+                  <td style={td}>
                     <select
                       value={role}
                       onChange={(e) => handleChangeRole(uid, e.target.value)}
-                      style={{ padding: '8px', borderRadius: '5px', border: '1px solid #ddd', outline: 'none' }}
+                      style={{ padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', outline: 'none' }}
                     >
                       <option value="CTV">Cộng tác viên (CTV)</option>
                       <option value="Người duyệt">Người duyệt</option>
@@ -103,12 +107,12 @@ const UserManagement = () => {
                       <option value="Kiểm soát viên">Kiểm soát viên</option>
                     </select>
                   </td>
-                  <td style={{ padding: '15px' }}>
-                    <button 
+                  <td style={td}>
+                    <button
                       onClick={() => handleDeleteUser(uid, fullName)}
-                      style={{ background: '#ff4d4f', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer' }}
+                      style={{ background: 'var(--danger-soft)', color: 'var(--danger)', border: 'none', padding: '8px 12px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}
                     >
-                      🗑️ Xóa
+                      <IconTrash size={13} />Xóa
                     </button>
                   </td>
                 </tr>
@@ -120,5 +124,8 @@ const UserManagement = () => {
     </div>
   );
 };
+
+const th = { padding: '13px 15px', fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 600 };
+const td = { padding: '13px 15px', fontSize: 14 };
 
 export default UserManagement;

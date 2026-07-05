@@ -1,4 +1,6 @@
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
@@ -11,6 +13,9 @@ const { verifyToken, isAdmin } = require('./middleware/authMiddleware');
 const driveRoutes = require('./routes/driveRoutes'); // ✅ chỉ require ở đây
 const pushRoutes = require('./routes/pushRoutes');
 const errorLogRoutes = require('./routes/errorLogRoutes');
+const chatRoutes = require('./routes/chatRoutes');
+const { initChatSocket } = require('./sockets/chatSocket');
+const { setIO } = require('./sockets/ioHolder');
 const { logError } = require('./utils/errorLogger');
 
 const app = express(); // ✅ khai báo app trước
@@ -46,6 +51,7 @@ app.use('/api/file', verifyToken, fileRoutes);
 app.use('/api/drive', verifyToken, driveRoutes);
 app.use('/api/push', verifyToken, pushRoutes);
 app.use('/api/errors', verifyToken, isAdmin, errorLogRoutes);
+app.use('/api/chat', verifyToken, chatRoutes);
 
 
 // Lấy danh sách user cơ bản
@@ -125,7 +131,17 @@ app.use((err, req, res, next) => {
 });
 
 // Khởi chạy
+const httpServer = http.createServer(app);
+const io = new Server(httpServer, {
+    cors: {
+        origin: true,
+        methods: ['GET', 'POST']
+    }
+});
+setIO(io);
+initChatSocket(io);
+
 const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
     console.log(`🚀 Server đang chạy tại port ${PORT}`);
 });

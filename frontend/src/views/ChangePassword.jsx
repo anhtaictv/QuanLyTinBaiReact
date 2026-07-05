@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import api from '../services/api';
+import { IconKey, IconCheckCircle, IconAlertCircle } from '../components/icons';
 
 const ChangePassword = () => {
   const [form, setForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' });
@@ -35,36 +36,43 @@ const ChangePassword = () => {
   };
 
   const inputStyle = {
-    width: '100%', padding: '12px', borderRadius: '8px',
-    border: '1px solid #ddd', fontSize: '15px', boxSizing: 'border-box'
+    width: '100%', padding: '11px 12px', borderRadius: 'var(--radius-sm)',
+    border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)',
+    fontSize: '15px', boxSizing: 'border-box'
   };
+  const labelStyle = { display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13.5, color: 'var(--text)' };
 
   return (
-    <div style={{ maxWidth: 480, margin: '0 auto', background: 'white', padding: 30, borderRadius: 12, boxShadow: '0 4px 15px rgba(0,0,0,0.08)' }}>
-      <h3 style={{ marginTop: 0, color: '#2c3e50', borderBottom: '2px solid #f0f0f0', paddingBottom: 10 }}>
-        🔑 Đổi mật khẩu
+    <div style={{ maxWidth: 460, margin: '0 auto', background: 'var(--surface)', border: '1px solid var(--border)', padding: 28, borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)' }}>
+      <h3 style={{ borderBottom: '1px solid var(--border)', paddingBottom: 14, marginBottom: 20, fontSize: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <IconKey size={17} style={{ color: 'var(--accent)' }} />Đổi mật khẩu
       </h3>
 
       {msg.text && (
-        <div style={{ padding: 12, borderRadius: 6, marginBottom: 16, background: msg.type === 'success' ? '#e8f5e9' : '#ffebee', color: msg.type === 'success' ? '#2e7d32' : '#c62828' }}>
-          {msg.text}
+        <div style={{
+          display: 'flex', gap: 8, alignItems: 'flex-start', padding: 11, borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 13.5,
+          background: msg.type === 'success' ? 'var(--success-soft)' : 'var(--danger-soft)',
+          color: msg.type === 'success' ? 'var(--success)' : 'var(--danger)'
+        }}>
+          {msg.type === 'success' ? <IconCheckCircle size={16} style={{ marginTop: 1 }} /> : <IconAlertCircle size={16} style={{ marginTop: 1 }} />}
+          <span>{msg.text}</span>
         </div>
       )}
 
       <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: 18 }}>
-          <label style={{ display: 'block', marginBottom: 6, fontWeight: 'bold', color: '#555' }}>Mật khẩu hiện tại</label>
-          <input name="oldPassword" type="password" value={form.oldPassword} onChange={handleChange} style={inputStyle} required />
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Mật khẩu hiện tại</label>
+          <input name="oldPassword" type="password" autoComplete="current-password" value={form.oldPassword} onChange={handleChange} style={inputStyle} required />
         </div>
-        <div style={{ marginBottom: 18 }}>
-          <label style={{ display: 'block', marginBottom: 6, fontWeight: 'bold', color: '#555' }}>Mật khẩu mới</label>
-          <input name="newPassword" type="password" value={form.newPassword} onChange={handleChange} style={inputStyle} required />
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Mật khẩu mới</label>
+          <input name="newPassword" type="password" autoComplete="new-password" value={form.newPassword} onChange={handleChange} style={inputStyle} required />
         </div>
-        <div style={{ marginBottom: 24 }}>
-          <label style={{ display: 'block', marginBottom: 6, fontWeight: 'bold', color: '#555' }}>Xác nhận mật khẩu mới</label>
-          <input name="confirmPassword" type="password" value={form.confirmPassword} onChange={handleChange} style={inputStyle} required />
+        <div style={{ marginBottom: 22 }}>
+          <label style={labelStyle}>Xác nhận mật khẩu mới</label>
+          <input name="confirmPassword" type="password" autoComplete="new-password" value={form.confirmPassword} onChange={handleChange} style={inputStyle} required />
         </div>
-        <button type="submit" disabled={loading} style={{ width: '100%', padding: 12, background: loading ? '#95a5a6' : '#3498db', color: 'white', border: 'none', borderRadius: 8, fontWeight: 'bold', fontSize: 15, cursor: loading ? 'not-allowed' : 'pointer' }}>
+        <button type="submit" disabled={loading} style={{ width: '100%', padding: 12, background: loading ? 'var(--text-muted)' : 'var(--accent)', color: 'var(--accent-fg)', border: 'none', borderRadius: 'var(--radius-sm)', fontWeight: 700, fontSize: 15, cursor: loading ? 'not-allowed' : 'pointer' }}>
           {loading ? 'Đang xử lý...' : 'Đổi mật khẩu'}
         </button>
       </form>

@@ -1,0 +1,146 @@
+/*
+  Hệ thống thiết kế QuanLyTinBai — token màu/chữ/khoảng cách dùng chung.
+  Sidebar giữ tông tối cố định ở cả 2 theme (điểm neo thương hiệu);
+  vùng nội dung đổi theo --bg/--surface/--text theo theme sáng/tối.
+*/
+:root {
+  --bg: #FAF8F3;
+  --surface: #FFFFFF;
+  --surface-2: #F1EEE3;
+  --text: #24211C;
+  --text-muted: #6F6B60;
+  --border: #E6E1D4;
+  --accent: #C1602E;
+  --accent-fg: #FFFFFF;
+  --accent-soft: #F3E4DB;
+  --success: #3F7256;
+  --success-soft: #E3EEE6;
+  --warning: #966424;
+  --warning-soft: #F5EDDD;
+  --danger: #A93E2C;
+  --danger-soft: #F6E2DC;
+  --sidebar-bg: #211F1C;
+  --sidebar-fg: #EDEAE0;
+  --sidebar-fg-muted: #9C988C;
+  --sidebar-active: rgba(201, 100, 66, 0.18);
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --shadow-sm: 0 1px 2px rgba(20, 18, 14, 0.07);
+  --shadow-md: 0 8px 28px -10px rgba(20, 18, 14, 0.22);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --font-display: 'Be Vietnam Pro', system-ui, sans-serif;
+  --font-body: 'Public Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  color-scheme: light;
+}
+
+body[data-theme="dark"] {
+  --bg: #1C1A17;
+  --surface: #262420;
+  --surface-2: #302D27;
+  --text: #F2EFE6;
+  --text-muted: #A39D8E;
+  --border: #3A362E;
+  --accent: #E0774A;
+  --accent-fg: #201B15;
+  --accent-soft: rgba(224, 119, 74, 0.16);
+  --success: #74A98A;
+  --success-soft: rgba(116, 169, 138, 0.14);
+  --warning: #D6A94F;
+  --warning-soft: rgba(214, 169, 79, 0.14);
+  --danger: #DB8973;
+  --danger-soft: rgba(219, 137, 115, 0.14);
+  --sidebar-bg: #17150F;
+  --sidebar-fg: #EFEBDE;
+  --sidebar-fg-muted: #8A867A;
+  --sidebar-active: rgba(224, 119, 74, 0.2);
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 28px -10px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  text-wrap: balance;
+  margin: 0;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+a { color: inherit; }
+
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+::placeholder { color: var(--text-muted); opacity: 0.8; }
+
+/* Toast (react-toastify) — theo token app thay vì mặc định của thư viện */
+.Toastify__toast {
+  font-family: var(--font-body) !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: var(--shadow-md) !important;
+  font-size: 14px !important;
+}
+.Toastify__toast--success { background: var(--surface) !important; color: var(--text) !important; border-left: 3px solid var(--success) !important; }
+.Toastify__toast--error { background: var(--surface) !important; color: var(--text) !important; border-left: 3px solid var(--danger) !important; }
+.Toastify__progress-bar--success { background: var(--success) !important; }
+.Toastify__progress-bar--error { background: var(--danger) !important; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Phản hồi tương tác toàn cục: mọi nút bấm đều có cảm giác "sống" ── */
+button:not(:disabled) {
+  cursor: pointer;
+  transition: filter 150ms ease, transform 100ms ease, box-shadow 150ms ease, background 150ms ease, border-color 150ms ease;
+}
+button:not(:disabled):hover { filter: brightness(1.06); }
+body[data-theme="dark"] button:not(:disabled):hover { filter: brightness(1.18); }
+button:not(:disabled):active { transform: scale(0.97); }
+button:disabled { cursor: not-allowed; }
+
+/* Hover hàng bảng — giúp mắt dò theo dòng dễ hơn trên bảng dữ liệu dày đặc */
+tbody tr { transition: background 120ms ease; }
+tbody tr:hover { background: var(--surface-2); }
+
+/* Link điều hướng sidebar: nền chỉ set khi active (inline), còn lại để hover CSS xử lý */
+.side-nav-link:hover { background: rgba(255, 255, 255, 0.07); }
+
+/* Card có thể bấm — nổi nhẹ khi hover để báo hiệu tương tác được */
+.hoverable-card {
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+.hoverable-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--accent);
+}
+
+/* Dòng danh sách có thể bấm (khác card: chỉ đổi nền, không nổi lên —
+   tránh cảm giác giật khi đang cuộn danh sách) */
+.hoverable-row:hover { background: var(--surface-2); }
+
+@keyframes icon-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

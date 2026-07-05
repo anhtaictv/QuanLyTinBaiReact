@@ -12,6 +12,7 @@ import MainLayout from './layout/MainLayout';
 import Permissions from './views/Permissions';
 import ChangePassword from './views/ChangePassword';
 import DocEditor from './views/DocEditor';
+import Chat from './views/Chat';
 
 // 1. Component bảo vệ Đăng nhập: Chưa đăng nhập thì không cho vào App
 const ProtectedRoute = () => {
@@ -59,6 +60,8 @@ function App() {
             <Route path="doc-editor/:postId" element={<DocEditor />} />
 
             <Route path="change-password" element={<ChangePassword />} />
+            <Route path="chat" element={<Chat />} />
+            <Route path="chat/:conversationId" element={<Chat />} />
 
             {/* CẤP ĐỘ 2: Chỉ dành riêng cho quyền Admin/Cấp cao */}
             <Route element={<AdminRoute />}>

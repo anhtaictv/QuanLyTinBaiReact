@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
+import { IconShield, IconTrash } from '../components/icons';
+import LoadingState from '../components/LoadingState';
 
 const Permissions = () => {
   const [users, setUsers] = useState([]);
@@ -53,30 +55,32 @@ const Permissions = () => {
     }
   };
 
-  if (loading) return <div>Đang tải dữ liệu...</div>;
+  if (loading) return <LoadingState label="Đang tải dữ liệu..." />;
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2 style={{ color: '#2c3e50', marginBottom: 20 }}>⚖️ Quản lý Phân Quyền (Chỉnh sửa Role)</h2>
-      <p style={{ color: '#7f8c8d', marginBottom: 20 }}>
+    <div>
+      <h2 style={{ marginBottom: 8, fontSize: 22, display: 'flex', alignItems: 'center', gap: 9 }}>
+        <IconShield size={19} style={{ color: 'var(--accent)' }} />Quản lý Phân Quyền
+      </h2>
+      <p style={{ color: 'var(--text-muted)', marginBottom: 20, fontSize: 13.5 }}>
         Bảng dưới đây cho phép bạn thay đổi quyền hạn (Role) hoặc Xóa người dùng.
       </p>
 
-      <div style={{ background: 'white', padding: 20, borderRadius: 12, boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: 10, borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-sm)', overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
           <thead>
-            <tr style={{ backgroundColor: '#34495e', color: 'white', textAlign: 'left' }}>
-              <th style={{ padding: 12 }}>ID User</th>
-              <th style={{ padding: 12 }}>Họ và Tên</th>
-              <th style={{ padding: 12 }}>Username</th>
-              <th style={{ padding: 12 }}>Phòng ban</th>
-              <th style={{ padding: 12 }}>Vai trò hiện tại</th>
-              <th style={{ padding: 12 }}>Thay đổi quyền</th>
+            <tr style={{ background: 'var(--sidebar-bg)', color: 'var(--sidebar-fg)', textAlign: 'left' }}>
+              <th style={th}>ID User</th>
+              <th style={th}>Họ và Tên</th>
+              <th style={th}>Username</th>
+              <th style={th}>Phòng ban</th>
+              <th style={th}>Vai trò hiện tại</th>
+              <th style={th}>Thay đổi quyền</th>
             </tr>
           </thead>
           <tbody>
             {users.map(user => {
-              // ✅ FIX: Đọc cả 2 dạng hoa/thường để tương thích với SQL Server
+              // FIX: Đọc cả 2 dạng hoa/thường để tương thích với SQL Server
               const uid        = user.UserID     || user.userID;
               const fullName   = user.FullName   || user.fullName   || '-';
               const username   = user.Username   || user.username   || '-';
@@ -84,35 +88,36 @@ const Permissions = () => {
               const role       = user.Role       || user.role       || '-';
 
               return (
-                <tr key={uid} style={{ borderBottom: '1px solid #eee' }}>
-                  <td style={{ padding: 12 }}>{uid}</td>
-                  <td style={{ padding: 12, fontWeight: 500 }}>{fullName}</td>
-                  <td style={{ padding: 12 }}>{username}</td>
-                  <td style={{ padding: 12 }}>{department}</td>
+                <tr key={uid} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td className="mono" style={{ ...td, color: 'var(--text-muted)' }}>{uid}</td>
+                  <td style={{ ...td, fontWeight: 500 }}>{fullName}</td>
+                  <td style={td}>{username}</td>
+                  <td style={td}>{department}</td>
 
-                  <td style={{ padding: 12 }}>
+                  <td style={td}>
                     <span style={{
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      background: '#e1f5fe',
-                      color: '#01579b',
-                      fontWeight: 'bold',
+                      padding: '4px 9px',
+                      borderRadius: '999px',
+                      background: 'var(--accent-soft)',
+                      color: 'var(--accent)',
+                      fontWeight: 700,
                       fontSize: '12px'
                     }}>
                       {role}
                     </span>
                   </td>
 
-                  <td style={{ padding: 12 }}>
+                  <td style={{ ...td, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <select
                       value={role}
                       onChange={(e) => handleRoleChange(uid, e.target.value)}
                       style={{
                         padding: '8px',
-                        borderRadius: '4px',
-                        border: '1px solid #ccc',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--border)',
+                        background: 'var(--surface-2)',
+                        color: 'var(--text)',
                         minWidth: '140px',
-                        marginRight: '8px',
                         cursor: 'pointer'
                       }}
                     >
@@ -127,17 +132,18 @@ const Permissions = () => {
                       onClick={() => handleDeleteUser(uid, fullName)}
                       title="Xóa người dùng (Giữ lại bài viết)"
                       style={{
-                        background: '#c0392b',
-                        color: 'white',
+                        background: 'var(--danger-soft)',
+                        color: 'var(--danger)',
                         border: 'none',
-                        padding: '6px 12px',
-                        borderRadius: '4px',
+                        padding: '7px 12px',
+                        borderRadius: 'var(--radius-sm)',
                         cursor: 'pointer',
-                        fontWeight: 'bold',
-                        fontSize: '13px'
+                        fontWeight: 600,
+                        fontSize: '13px',
+                        display: 'inline-flex', alignItems: 'center', gap: 6
                       }}
                     >
-                      🗑️ Xóa
+                      <IconTrash size={13} />Xóa
                     </button>
                   </td>
                 </tr>
@@ -149,5 +155,8 @@ const Permissions = () => {
     </div>
   );
 };
+
+const th = { padding: 12, fontSize: 12.5, fontWeight: 600 };
+const td = { padding: 12, fontSize: 14 };
 
 export default Permissions;

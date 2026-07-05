@@ -18,6 +18,7 @@
     "react-scripts": "^5.0.1",
     "react-toastify": "^8.2.0",
     "recharts": "^3.8.1",
+    "socket.io-client": "^4.8.3",
     "use-sync-external-store": "^1.6.0"
   },
   "scripts": {

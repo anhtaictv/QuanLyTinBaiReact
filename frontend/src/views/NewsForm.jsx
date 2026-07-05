@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { showToastSuccess, showToastError } from '../utils/Toast';
+import { showToastSuccess } from '../utils/Toast';
+import { IconPlus, IconAlertCircle, IconFolder, IconX, IconSend, IconLoader } from '../components/icons';
 
 const NewsForm = () => {
   const navigate    = useNavigate();
@@ -66,7 +67,7 @@ const NewsForm = () => {
         StatusID:    1
       });
 
-      showToastSuccess('🚀 Đã gửi bài lên hệ thống thành công!');
+      showToastSuccess('Đã gửi bài lên hệ thống thành công!');
       navigate('/news');
     } catch (err) {
       setError('Lỗi khi gửi bài: ' + (err.response?.data?.error || err.message));
@@ -75,23 +76,23 @@ const NewsForm = () => {
     }
   };
 
-  const inputStyle    = { width: '100%', padding: '10px 12px', border: '1px solid #ccc', borderRadius: 6, boxSizing: 'border-box', fontSize: 14 };
+  const inputStyle    = { width: '100%', padding: '10px 12px', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', borderRadius: 'var(--radius-sm)', boxSizing: 'border-box', fontSize: 14 };
   const textareaStyle = { ...inputStyle, fontFamily: 'inherit', resize: 'vertical' };
-  const labelStyle    = { display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 'bold', color: '#34495e' };
+  const labelStyle    = { display: 'block', marginBottom: 6, fontSize: 13.5, fontWeight: 600, color: 'var(--text)' };
 
   return (
-    <div style={{ background: 'white', padding: 30, borderRadius: 12, boxShadow: '0 4px 15px rgba(0,0,0,0.1)', maxWidth: 800, margin: '0 auto', fontFamily: 'Arial, sans-serif' }}>
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: 28, borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)', maxWidth: 800, margin: '0 auto' }}>
 
-      <div style={{ borderBottom: '2px solid #f0f0f0', paddingBottom: 10, marginBottom: 24 }}>
-        <h3 style={{ margin: 0, color: '#2c3e50' }}>🔥 Gửi Bài Mới</h3>
-        <p style={{ color: '#7f8c8d', margin: '6px 0 0 0', fontSize: 13 }}>
+      <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: 14, marginBottom: 22 }}>
+        <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 18 }}><IconPlus size={18} style={{ color: 'var(--accent)' }} />Gửi Bài Mới</h3>
+        <p style={{ color: 'var(--text-muted)', margin: '6px 0 0 0', fontSize: 13 }}>
           Điền thông tin và đính kèm file Word. Người duyệt sẽ chỉnh sửa trực tiếp trên file.
         </p>
       </div>
 
       {error && (
-        <div style={{ color: 'red', background: '#ffebee', padding: 10, borderRadius: 5, marginBottom: 16, fontSize: 14 }}>
-          ⚠️ {error}
+        <div style={{ display: 'flex', gap: 8, color: 'var(--danger)', background: 'var(--danger-soft)', padding: 10, borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 13.5 }}>
+          <IconAlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />{error}
         </div>
       )}
 
@@ -113,12 +114,12 @@ const NewsForm = () => {
 
         {/* Tiêu đề */}
         <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Tiêu đề bài viết <span style={{ color: 'red' }}>*</span></label>
+          <label style={labelStyle}>Tiêu đề bài viết <span style={{ color: 'var(--danger)' }}>*</span></label>
           <input
             type="text" name="tieuDe"
             value={formData.tieuDe}
             onChange={handleInputChange}
-            style={{ ...inputStyle, fontWeight: 'bold', color: '#b30000' }}
+            style={{ ...inputStyle, fontWeight: 600 }}
             placeholder="Nhập tiêu đề bài viết..."
             required
           />
@@ -147,22 +148,22 @@ const NewsForm = () => {
         </div>
 
         {/* Upload file */}
-        <div style={{ marginBottom: 24, borderTop: '1px solid #eee', paddingTop: 16 }}>
+        <div style={{ marginBottom: 24, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
           <label style={labelStyle}>
-            File Word đính kèm <span style={{ color: 'red' }}>*</span>
+            File Word đính kèm <span style={{ color: 'var(--danger)' }}>*</span>
           </label>
           <input
             type="file" accept=".doc,.docx"
             onChange={(e) => setFile(e.target.files[0])}
-            style={{ ...inputStyle, border: '2px dashed #ccc', background: '#fafafa', padding: 12 }}
+            style={{ ...inputStyle, border: '2px dashed var(--border)', background: 'var(--surface-2)', padding: 12 }}
             required
           />
           {file && (
-            <small style={{ color: '#27ae60', display: 'block', marginTop: 6 }}>
-              📁 Đã chọn: <strong>{file.name}</strong> ({(file.size / 1024).toFixed(0)} KB)
+            <small style={{ color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+              <IconFolder size={14} />Đã chọn: <strong>{file.name}</strong> ({(file.size / 1024).toFixed(0)} KB)
             </small>
           )}
-          <small style={{ color: '#7f8c8d', display: 'block', marginTop: 4 }}>
+          <small style={{ color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
             Chỉ chấp nhận file .doc và .docx
           </small>
         </div>
@@ -171,15 +172,15 @@ const NewsForm = () => {
         <div style={{ display: 'flex', gap: 12 }}>
           <button
             type="button" onClick={() => navigate('/news')}
-            style={{ background: '#7f8c8d', color: 'white', padding: '12px 20px', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold' }}
+            style={{ background: 'var(--surface-2)', color: 'var(--text)', padding: '12px 20px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}
           >
-            ✕ Hủy
+            <IconX size={15} />Hủy
           </button>
           <button
             type="submit" disabled={submitting}
-            style={{ background: submitting ? '#95a5a6' : '#2980b9', color: 'white', padding: 12, border: 'none', borderRadius: 6, cursor: submitting ? 'not-allowed' : 'pointer', fontWeight: 'bold', flex: 1, fontSize: 15 }}
+            style={{ background: submitting ? 'var(--text-muted)' : 'var(--accent)', color: 'var(--accent-fg)', padding: 12, border: 'none', borderRadius: 'var(--radius-sm)', cursor: submitting ? 'not-allowed' : 'pointer', fontWeight: 700, flex: 1, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           >
-            {submitting ? '⏳ Đang upload và gửi bài...' : '🚀 Gửi Bài Lên Hệ Thống'}
+            {submitting ? <><IconLoader size={16} />Đang upload và gửi bài...</> : <><IconSend size={15} />Gửi Bài Lên Hệ Thống</>}
           </button>
         </div>
       </form>

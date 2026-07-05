@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { IconSearch, IconUser, IconCheckCircle, IconXCircle, IconClock, IconLock, IconUnlock, IconTrash } from '../components/icons';
+import LoadingState from '../components/LoadingState';
 
 const NewsList = () => {
   const [posts, setPosts] = useState([]);
-  const [users, setUsers] = useState([]);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
 
@@ -26,7 +27,7 @@ const NewsList = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [postsRes, usersRes] = await Promise.all([
+      const [postsRes] = await Promise.all([
         api.get('/news'),
         api.get('/users/basic')
       ]);
@@ -45,9 +46,6 @@ const NewsList = () => {
         setPosts(allData);
       }
 
-      const usersData = Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data?.recordset || []);
-      setUsers(usersData);
-
     } catch (err) {
       console.error("Lỗi khi fetch dữ liệu:", err);
     } finally {
@@ -64,7 +62,7 @@ const NewsList = () => {
     const titleMatch = (p.Title || p.title || "").toLowerCase().includes(searchTerm.toLowerCase());
     const authorName = p.AuthorName || p.FullName || p.fullName || "";
     const authorMatch = authorName.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     // Tìm kiếm thông minh: Cho phép người dùng gõ tìm từ khóa nằm trong nội dung chi tiết
     let contentMatch = false;
     try {
@@ -76,11 +74,11 @@ const NewsList = () => {
       // Nếu là văn bản thô/HTML định dạng cũ
       contentMatch = (p.Content || p.content || "").toLowerCase().includes(searchTerm.toLowerCase());
     }
-    
+
     // Xử lý bộ lọc ngày tháng phát hành bài viết
     const postDate = new Date(p.CreatedAt || p.createdAt);
     let dateMatch = true;
-    
+
     if (dateRange.start) {
       const startDate = new Date(dateRange.start);
       startDate.setHours(0, 0, 0, 0);
@@ -134,57 +132,66 @@ const NewsList = () => {
     }
   };
 
-  if (loading) return <div style={{ padding: '20px' }}>Đang tải dữ liệu từ VPS...</div>;
+  const filterBtnStyle = (active, activeColor) => ({
+    padding: '8px 16px', background: active ? activeColor : 'var(--surface-2)',
+    color: active ? '#fff' : 'var(--text)', border: 'none', borderRadius: 'var(--radius-sm)',
+    cursor: 'pointer', fontSize: 13.5, fontWeight: 600
+  });
+
+  const actionBtnStyle = (bg, color) => ({
+    background: bg, color: color || '#fff', border: 'none', padding: '6px 11px',
+    borderRadius: 'var(--radius-sm)', marginRight: 6, cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+    display: 'inline-flex', alignItems: 'center', gap: 5
+  });
+
+  if (loading) return <LoadingState label="Đang tải dữ liệu…" />;
 
   return (
-    <div style={{ padding: 20, fontFamily: 'Arial, sans-serif' }}>
+    <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-        <h2 style={{ margin: 0 }}>📰 Quản lý Tin Bài</h2>
-        <div style={{ display: 'flex', gap: '5px' }}>
-          <button 
-            onClick={() => setFilter('all')} 
-            style={{ padding: '8px 16px', background: filter === 'all' ? '#1a73e8' : '#ddd', color: filter === 'all' ? 'white' : 'black', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
-          > Tất cả </button>
-          <button 
-            onClick={() => setFilter('pending')} 
-            style={{ padding: '8px 16px', background: filter === 'pending' ? '#f39c12' : '#ddd', color: filter === 'pending' ? 'white' : 'black', border: 'none', borderRadius: '5px', cursor: 'pointer' }}
-          > Chờ duyệt </button>
+        <h2 style={{ fontSize: 22 }}>Quản lý Tin Bài</h2>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button onClick={() => setFilter('all')} style={filterBtnStyle(filter === 'all', 'var(--accent)')}>Tất cả</button>
+          <button onClick={() => setFilter('pending')} style={filterBtnStyle(filter === 'pending', 'var(--warning)')}>Chờ duyệt</button>
         </div>
       </div>
 
       {/* THANH TÌM KIẾM & LỌC NGÀY THÁNG */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', background: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #eee' }}>
-        <input 
-          placeholder="🔍 Tìm tiêu đề, tác giả hoặc nội dung kịch bản..." 
-          style={{ padding: '10px', flex: '2 1 300px', borderRadius: '5px', border: '1px solid #ddd', fontSize: '14px' }}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <div style={{ display: 'flex', gap: '5px', flex: '1 1 300px', alignItems: 'center' }}>
-          <span style={{ fontSize: '12px', color: '#666' }}>Từ:</span>
-          <input 
-            type="date" 
-            style={{ padding: '8px', borderRadius: '5px', border: '1px solid #ddd', flex: 1 }}
-            onChange={(e) => setDateRange({...dateRange, start: e.target.value})} 
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap', background: 'var(--surface)', border: '1px solid var(--border)', padding: '14px', borderRadius: 'var(--radius-md)' }}>
+        <div style={{ position: 'relative', flex: '2 1 300px' }}>
+          <IconSearch size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <input
+            placeholder="Tìm tiêu đề, tác giả hoặc nội dung kịch bản..."
+            style={{ padding: '9px 12px 9px 36px', width: '100%', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: '14px', boxSizing: 'border-box' }}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
-          <span style={{ fontSize: '12px', color: '#666' }}>Đến:</span>
-          <input 
-            type="date" 
-            style={{ padding: '8px', borderRadius: '5px', border: '1px solid #ddd', flex: 1 }}
-            onChange={(e) => setDateRange({...dateRange, end: e.target.value})} 
+        </div>
+        <div style={{ display: 'flex', gap: '6px', flex: '1 1 300px', alignItems: 'center' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Từ:</span>
+          <input
+            type="date"
+            style={{ padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', flex: 1 }}
+            onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+          />
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Đến:</span>
+          <input
+            type="date"
+            style={{ padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', flex: 1 }}
+            onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
           />
         </div>
       </div>
-      
+
       {/* KHU VỰC BẢNG HIỂN THỊ */}
-      <div style={{ background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)', overflowX: 'auto' }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '10px', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-sm)', overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
           <thead>
-            <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee' }}>
-              <th style={{ padding: '12px' }}>ID</th>
-              <th style={{ padding: '12px' }}>Tiêu đề</th>
-              <th style={{ padding: '12px' }}>Tác giả</th>
-              <th style={{ padding: '12px' }}>Trạng thái</th>
-              <th style={{ padding: '12px' }}>Thao tác</th>
+            <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+              <th style={{ padding: '12px', fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 600 }}>ID</th>
+              <th style={{ padding: '12px', fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 600 }}>Tiêu đề</th>
+              <th style={{ padding: '12px', fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 600 }}>Tác giả</th>
+              <th style={{ padding: '12px', fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 600 }}>Trạng thái</th>
+              <th style={{ padding: '12px', fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 600 }}>Thao tác</th>
             </tr>
           </thead>
           <tbody>
@@ -197,32 +204,32 @@ const NewsList = () => {
                 const authorName = item.AuthorName || item.FullName || item.fullName || `ID: ${item.AuthorID || item.authorID}`;
 
                 return (
-                  <tr key={pID} style={{ borderBottom: '1px solid #f9f9f9' }}>
-                    <td style={{ padding: '12px' }}>#{pID}</td>
-                    <td style={{ padding: '12px', fontWeight: '500' }}>
-                      <span onClick={() => navigate(`/news/${pID}`)} style={{ color: '#1a73e8', cursor: 'pointer' }}> {pTitle} </span>
+                  <tr key={pID} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td className="mono" style={{ padding: '12px', fontSize: 13, color: 'var(--text-muted)' }}>#{pID}</td>
+                    <td style={{ padding: '12px', fontWeight: 500 }}>
+                      <span onClick={() => navigate(`/news/${pID}`)} style={{ color: 'var(--accent)', cursor: 'pointer' }}>{pTitle}</span>
                     </td>
-                    <td style={{ padding: '12px' }}>👤 {authorName}</td>
+                    <td style={{ padding: '12px', fontSize: 13.5, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <IconUser size={14} />{authorName}
+                    </td>
                     <td style={{ padding: '12px' }}>
-                      {pStatus === 2 ? <span style={{ color: 'green' }}>✅ Đã duyệt</span> : 
-                       pStatus === 3 ? <span style={{ color: 'red' }}>❌ Từ chối</span> : 
-                       <span style={{ color: 'orange' }}>⏳ Chờ duyệt</span>}
-                      {pLocked && <span title="Bài viết đang bị khóa"> 🔒</span>}
+                      <StatusBadge status={pStatus} />
+                      {pLocked && <IconLock size={13} style={{ marginLeft: 6, verticalAlign: 'middle', color: 'var(--text-muted)' }} />}
                     </td>
                     <td style={{ padding: '12px' }}>
                       {canApproveOrReject && (pStatus === 1 || pStatus === 0) && (
                         <>
-                          <button onClick={() => handleApprove(pID)} style={{ background: '#2ecc71', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '4px', marginRight: '5px', cursor: 'pointer' }}> Duyệt </button>
-                          <button onClick={() => handleReject(pID)} style={{ background: '#e67e22', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '4px', marginRight: '5px', cursor: 'pointer' }}> Từ chối </button>
+                          <button onClick={() => handleApprove(pID)} style={actionBtnStyle('var(--success)')}><IconCheckCircle size={13} />Duyệt</button>
+                          <button onClick={() => handleReject(pID)} style={actionBtnStyle('var(--warning)')}><IconXCircle size={13} />Từ chối</button>
                         </>
                       )}
                       {canLockOrUnlock && (
-                        <button onClick={() => handleLock(pID, pLocked)} style={{ background: pLocked ? '#95a5a6' : '#34495e', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '4px', marginRight: '5px', cursor: 'pointer' }}>
-                          {pLocked ? '🔓 Mở' : '🔒 Khóa'}
+                        <button onClick={() => handleLock(pID, pLocked)} style={actionBtnStyle(pLocked ? 'var(--surface-2)' : 'var(--sidebar-bg)', pLocked ? 'var(--text)' : '#fff')}>
+                          {pLocked ? <IconUnlock size={13} /> : <IconLock size={13} />}{pLocked ? 'Mở' : 'Khóa'}
                         </button>
                       )}
                       {canDeletePost && (
-                        <button onClick={() => handleDelete(pID, pTitle)} style={{ background: '#ff4d4f', color: 'white', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer' }}>🗑️ Xóa</button>
+                        <button onClick={() => handleDelete(pID, pTitle)} style={actionBtnStyle('var(--danger)')}><IconTrash size={13} />Xóa</button>
                       )}
                     </td>
                   </tr>
@@ -230,7 +237,7 @@ const NewsList = () => {
               })
             ) : (
               <tr>
-                <td colSpan="5" style={{ textAlign: 'center', padding: '30px', color: '#888' }}>
+                <td colSpan="5" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
                   Không tìm thấy bài viết nào khớp với bộ lọc.
                 </td>
               </tr>
@@ -239,6 +246,19 @@ const NewsList = () => {
         </table>
       </div>
     </div>
+  );
+};
+
+const StatusBadge = ({ status }) => {
+  const map = {
+    2: { label: 'Đã duyệt', color: 'var(--success)', bg: 'var(--success-soft)', Icon: IconCheckCircle },
+    3: { label: 'Từ chối', color: 'var(--danger)', bg: 'var(--danger-soft)', Icon: IconXCircle },
+  };
+  const { label, color, bg, Icon } = map[status] || { label: 'Chờ duyệt', color: 'var(--warning)', bg: 'var(--warning-soft)', Icon: IconClock };
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color, background: bg, padding: '3px 9px', borderRadius: 999 }}>
+      <Icon size={12} />{label}
+    </span>
   );
 };
 

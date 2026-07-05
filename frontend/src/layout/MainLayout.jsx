@@ -1,7 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import useIdleLogout from '../hooks/useIdleLogout';
 import ErrorBell from '../components/ErrorBell';
+import ChatBell from '../components/ChatBell';
+import { disconnectChatSocket } from '../hooks/useChatSocket';
+import { ThemeContext } from '../context/ThemeContext';
+import {
+  IconGrid, IconList, IconPlus, IconChat, IconKey, IconUsers, IconLogout,
+  IconRefresh, IconBell, IconBellOff, IconMenu, IconX, IconSun, IconMoon
+} from '../components/icons';
 
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 phút không hoạt động thì tự đăng xuất
 
@@ -16,6 +23,7 @@ function urlBase64ToUint8Array(base64String) {
 const MainLayout = () => {
   const navigate  = useNavigate();
   const location  = useLocation();
+  const { isDarkMode, toggleTheme } = useContext(ThemeContext);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [subscribed,  setSubscribed]  = useState(false);
   const [notifLoading, setNotifLoading] = useState(false);
@@ -117,6 +125,7 @@ const MainLayout = () => {
   };
 
   const handleLogout = () => {
+    disconnectChatSocket();
     localStorage.clear();
     navigate('/login');
   };
@@ -126,17 +135,28 @@ const MainLayout = () => {
   const handleRefresh = () => window.location.reload();
 
   const menuStyle = (path) => ({
-    padding:        '12px 15px',
+    padding:        '10px 14px',
     cursor:         'pointer',
-    borderRadius:   '8px',
-    marginBottom:   '5px',
-    transition:     '0.3s',
-    background:     location.pathname === path ? '#34495e' : 'transparent',
-    color:          location.pathname === path ? '#3498db' : '#ecf0f1',
+    borderRadius:   'var(--radius-sm)',
+    marginBottom:   '2px',
+    transition:     'background 150ms ease, color 150ms ease',
+    background:     location.pathname === path ? 'var(--sidebar-active)' : undefined,
+    color:          location.pathname === path ? '#fff' : 'var(--sidebar-fg-muted)',
     textDecoration: 'none',
-    display:        'block',
-    fontSize:       '15px',
+    display:        'flex',
+    alignItems:     'center',
+    gap:            '10px',
+    fontSize:       '13.5px',
+    fontWeight:     500,
   });
+
+  const chipStyle = {
+    width: 34, height: 34, borderRadius: 'var(--radius-sm)',
+    background: 'rgba(255,255,255,0.06)', border: '1px solid var(--sidebar-border)',
+    color: 'var(--sidebar-fg)', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    transition: 'background 150ms ease'
+  };
 
   // ── Nút bật/tắt thông báo ─────────────────────────────────────────────────
   const NotifBtn = () => {
@@ -149,21 +169,15 @@ const MainLayout = () => {
           denied      ? 'Thông báo bị chặn – vào cài đặt trình duyệt để bật' :
           subscribed  ? 'Tắt thông báo' : 'Bật thông báo'
         }
+        aria-label={subscribed ? 'Tắt thông báo đẩy' : 'Bật thông báo đẩy'}
         style={{
-          background:   subscribed ? 'rgba(46,204,113,0.25)' : 'rgba(255,255,255,0.1)',
-          border:       subscribed ? '1px solid #2ecc71'     : '1px solid rgba(255,255,255,0.2)',
-          color:        'white',
-          padding:      '6px 10px',
-          borderRadius: '8px',
-          cursor:       notifLoading || denied ? 'not-allowed' : 'pointer',
-          fontSize:     '18px',
-          display:      'flex',
-          alignItems:   'center',
-          gap:          4,
-          transition:   '0.2s'
+          ...chipStyle,
+          background: subscribed ? 'var(--sidebar-active)' : chipStyle.background,
+          cursor:     notifLoading || denied ? 'not-allowed' : 'pointer',
+          opacity:    denied ? 0.5 : 1,
         }}
       >
-        {notifLoading ? '⏳' : denied ? '🚫' : subscribed ? '🔔' : '🔕'}
+        {notifLoading ? <IconRefresh size={16} /> : subscribed ? <IconBell size={16} /> : <IconBellOff size={16} />}
       </button>
     );
   };
@@ -171,102 +185,114 @@ const MainLayout = () => {
   const SidebarContent = () => (
     <>
       {/* Header sidebar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h2 style={{ color: '#3498db', margin: 0, fontSize: '18px' }}>QUẢN LÝ TIN</h2>
-        <div style={{ display: 'flex', gap: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <h2 style={{ color: 'var(--sidebar-fg)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px', letterSpacing: '0.02em', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <IconFileBrand /> QUẢN LÝ TIN
+        </h2>
+        <div style={{ display: 'flex', gap: 5 }}>
           {isAdminStrict && <ErrorBell />}
+          <ChatBell />
           <NotifBtn />
-          <button onClick={handleRefresh} style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '18px', cursor: 'pointer' }}>🔄</button>
+          <button onClick={handleRefresh} aria-label="Tải lại trang" title="Tải lại trang" style={chipStyle}><IconRefresh size={15} /></button>
         </div>
       </div>
 
       {/* Trạng thái thông báo */}
       <div style={{
-        marginBottom: 16, padding: '7px 10px',
-        background:   'rgba(0,0,0,0.2)', borderRadius: 6,
-        fontSize:     11,
-        color: Notification.permission === 'denied' ? '#e74c3c'
-             : subscribed ? '#2ecc71' : '#95a5a6'
+        marginBottom: 14, padding: '8px 10px',
+        background:   'rgba(0,0,0,0.18)', borderRadius: 'var(--radius-sm)',
+        fontSize:     11.5, lineHeight: 1.5,
+        color: Notification.permission === 'denied' ? '#E0A08F'
+             : subscribed ? '#8FCBA8' : 'var(--sidebar-fg-muted)'
       }}>
         {Notification.permission === 'denied'
-          ? '🚫 Thông báo bị chặn – vào cài đặt trình duyệt để bật'
+          ? 'Thông báo bị chặn – vào cài đặt trình duyệt để bật'
           : subscribed
-            ? '🔔 Thông báo đang bật'
-            : '🔕 Chưa bật thông báo – bấm 🔕 để bật'}
+            ? 'Thông báo đang bật'
+            : 'Chưa bật thông báo đẩy'}
       </div>
 
       {/* Menu */}
       <div style={{ flex: 1 }}>
-        <Link to="/dashboard"       style={menuStyle('/dashboard')}       onClick={() => setSidebarOpen(false)}>📊 Dashboard</Link>
-        <Link to="/news"            style={menuStyle('/news')}            onClick={() => setSidebarOpen(false)}>📰 Danh sách tin</Link>
-        <Link to="/news/create"     style={menuStyle('/news/create')}     onClick={() => setSidebarOpen(false)}>➕ Gửi bài mới</Link>
-        <Link to="/change-password" style={menuStyle('/change-password')} onClick={() => setSidebarOpen(false)}>🔑 Đổi mật khẩu</Link>
+        <Link className="side-nav-link" to="/dashboard"       style={menuStyle('/dashboard')}       onClick={() => setSidebarOpen(false)}><IconGrid size={17}/>Dashboard</Link>
+        <Link className="side-nav-link" to="/news"            style={menuStyle('/news')}            onClick={() => setSidebarOpen(false)}><IconList size={17}/>Danh sách tin</Link>
+        <Link className="side-nav-link" to="/news/create"     style={menuStyle('/news/create')}     onClick={() => setSidebarOpen(false)}><IconPlus size={17}/>Gửi bài mới</Link>
+        <Link className="side-nav-link" to="/chat"            style={menuStyle('/chat')}            onClick={() => setSidebarOpen(false)}><IconChat size={17}/>Tin nhắn</Link>
+        <Link className="side-nav-link" to="/change-password" style={menuStyle('/change-password')} onClick={() => setSidebarOpen(false)}><IconKey size={17}/>Đổi mật khẩu</Link>
 
         {userObj && isAdminLevel && (
           <>
-            <div style={{ padding: '15px 15px 5px', fontSize: '11px', color: '#95a5a6', textTransform: 'uppercase', letterSpacing: '1px', marginTop: '10px' }}>
+            <div style={{ padding: '14px 14px 4px', fontSize: '10.5px', color: 'var(--sidebar-fg-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-mono)' }}>
               Hệ thống quản trị
             </div>
-            <Link to="/users" style={menuStyle('/users')} onClick={() => setSidebarOpen(false)}>
-              👥 Quản lý Nhân sự
+            <Link className="side-nav-link" to="/users" style={menuStyle('/users')} onClick={() => setSidebarOpen(false)}>
+              <IconUsers size={17}/>Quản lý Nhân sự
             </Link>
           </>
         )}
       </div>
 
-      {/* Đăng xuất */}
-      <div style={{ marginTop: 'auto', borderTop: '1px solid #34495e', paddingTop: '20px' }}>
-        <button onClick={handleLogout} style={{ width: '100%', padding: '12px', background: '#e74c3c', border: 'none', color: 'white', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-          Đăng xuất
+      {/* Theme + Đăng xuất */}
+      <div style={{ marginTop: 'auto', borderTop: '1px solid var(--sidebar-border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <button
+          onClick={toggleTheme}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'transparent', border: 'none', color: 'var(--sidebar-fg-muted)', fontSize: 13, cursor: 'pointer', padding: '8px 4px' }}
+        >
+          {isDarkMode ? <IconSun size={16} /> : <IconMoon size={16} />}
+          {isDarkMode ? 'Giao diện sáng' : 'Giao diện tối'}
+        </button>
+        <button onClick={handleLogout} style={{ width: '100%', padding: '10px', background: 'var(--danger-soft)', border: 'none', color: 'var(--danger)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontWeight: 600, fontSize: 13.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <IconLogout size={16} />Đăng xuất
         </button>
       </div>
     </>
   );
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', fontFamily: 'Arial, sans-serif' }}>
+    <div style={{ display: 'flex', minHeight: '100vh' }}>
       <style>{`
         @media (min-width: 769px) {
           .desktop-sidebar { display: flex !important; }
           .mobile-topbar   { display: none !important; }
           .mobile-drawer   { display: none !important; }
           .overlay         { display: none !important; }
-          .main-content    { padding: 30px !important; }
+          .main-content    { padding: 28px !important; }
         }
         @media (max-width: 768px) {
           .desktop-sidebar { display: none !important; }
           .mobile-topbar   { display: flex !important; }
-          .main-content    { padding: 15px !important; padding-top: 110px !important; }
+          .main-content    { padding: 16px !important; padding-top: 108px !important; }
         }
       `}</style>
 
       {/* ── DESKTOP SIDEBAR ── */}
-      <div className="desktop-sidebar" style={{ width: '260px', background: '#2c3e50', color: 'white', padding: '20px', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      <div className="desktop-sidebar" style={{ width: '260px', background: 'var(--sidebar-bg)', color: 'var(--sidebar-fg)', padding: '18px', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
         <SidebarContent />
       </div>
 
       {/* ── MOBILE TOP BAR ── */}
       <div className="mobile-topbar" style={{
         display: 'none', position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        background:    '#2c3e50',
+        background:    'var(--sidebar-bg)',
         paddingTop:    'env(safe-area-inset-top, 40px)',
         paddingBottom: '12px', paddingLeft: '16px', paddingRight: '16px',
         alignItems:    'center', justifyContent: 'space-between',
-        boxShadow:     '0 2px 10px rgba(0,0,0,0.2)'
+        boxShadow:     'var(--shadow-md)'
       }}>
-        <button onClick={() => setSidebarOpen(true)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', fontSize: '24px', cursor: 'pointer', width: '40px', height: '40px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          ☰
+        <button onClick={() => setSidebarOpen(true)} aria-label="Mở menu" style={{ ...chipStyle, width: 40, height: 40 }}>
+          <IconMenu size={20} />
         </button>
 
-        <span style={{ color: '#3498db', fontWeight: 'bold', fontSize: '18px', letterSpacing: '1px' }}>
+        <span style={{ color: 'var(--sidebar-fg)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px', letterSpacing: '0.02em' }}>
           QUẢN LÝ TIN
         </span>
 
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 5 }}>
           {isAdminStrict && <ErrorBell />}
+          <ChatBell />
           <NotifBtn />
-          <button onClick={handleRefresh} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', fontSize: '20px', cursor: 'pointer', width: '40px', height: '40px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            🔄
+          <button onClick={handleRefresh} aria-label="Tải lại trang" style={{ ...chipStyle, width: 40, height: 40 }}>
+            <IconRefresh size={18} />
           </button>
         </div>
       </div>
@@ -275,20 +301,28 @@ const MainLayout = () => {
         <div className="overlay" onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 150 }} />
       )}
 
-      <div className="mobile-drawer" style={{ display: sidebarOpen ? 'flex' : 'none', position: 'fixed', top: 0, left: 0, bottom: 0, width: '260px', background: '#2c3e50', color: 'white', padding: '20px', flexDirection: 'column', zIndex: 200, overflowY: 'auto' }}>
-        <button onClick={() => setSidebarOpen(false)} style={{ alignSelf: 'flex-end', background: 'transparent', border: 'none', color: 'white', fontSize: '22px', marginBottom: '10px' }}>✕</button>
+      <div className="mobile-drawer" style={{ display: sidebarOpen ? 'flex' : 'none', position: 'fixed', top: 0, left: 0, bottom: 0, width: '260px', background: 'var(--sidebar-bg)', color: 'var(--sidebar-fg)', padding: '18px', flexDirection: 'column', zIndex: 200, overflowY: 'auto' }}>
+        <button onClick={() => setSidebarOpen(false)} aria-label="Đóng menu" style={{ alignSelf: 'flex-end', background: 'transparent', border: 'none', color: 'var(--sidebar-fg)', marginBottom: '10px', cursor: 'pointer' }}>
+          <IconX size={20} />
+        </button>
         <SidebarContent />
       </div>
 
-      <div className="main-content" style={{ flex: 1, background: '#f4f7f6', padding: '30px', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', background: 'white', padding: '12px 20px', borderRadius: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
-          <div>Xin chào, <strong style={{ color: '#3498db' }}>{userObj?.fullName || userObj?.FullName}</strong></div>
-          <div style={{ fontSize: '12px', background: '#ecf0f1', padding: '5px 10px', borderRadius: '10px', fontWeight: 'bold' }}>Quyền: {userObj?.role || userObj?.Role}</div>
+      <div className="main-content" style={{ flex: 1, background: 'var(--bg)', padding: '28px', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', background: 'var(--surface)', border: '1px solid var(--border)', padding: '12px 20px', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-sm)', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ fontSize: 14 }}>Xin chào, <strong style={{ color: 'var(--accent)' }}>{userObj?.fullName || userObj?.FullName}</strong></div>
+          <span style={{ fontSize: '12px', background: 'var(--accent-soft)', color: 'var(--accent)', padding: '4px 10px', borderRadius: '999px', fontWeight: 600 }}>{userObj?.role || userObj?.Role}</span>
         </div>
         <Outlet />
       </div>
     </div>
   );
 };
+
+const IconFileBrand = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 19.5V6a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7l-3 3.5Z"/>
+  </svg>
+);
 
 export default MainLayout;
