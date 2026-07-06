@@ -1,11 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { getMessages, uploadChatFile } from '../../services/chatService';
+import { getMessages, uploadChatFile, editMessage, recallMessage, deleteMessageForMe } from '../../services/chatService';
 import MessageComposer from './MessageComposer';
 import GroupMembersModal from './GroupMembersModal';
-import { IconSettings, IconFileText } from '../icons';
+import { IconSettings, IconFileText, IconMoreVertical } from '../icons';
+import { showToastError } from '../../utils/Toast';
 import LoadingState from '../LoadingState';
 
 const BASE_URL = process.env.REACT_APP_API_URL || '/api';
+
+// Giới hạn số tin nhắn giữ trong bộ nhớ trình duyệt khi hội thoại mở lâu và liên tục
+// nhận tin nhắn mới qua socket — cắt bớt phần cũ nhất, có thể tải lại qua phân trang.
+const MAX_MESSAGES_IN_MEMORY = 300;
+const TRIM_TARGET = 150;
 
 const AttachmentView = ({ att, mine }) => {
   if (att.IsImage) {
@@ -31,12 +37,57 @@ const AttachmentView = ({ att, mine }) => {
   );
 };
 
+const MessageActionsMenu = ({ mine, recalled, onEdit, onRecall, onDeleteForMe, open, onToggle, align }) => (
+  <div className="chat-msg-actions-wrap" style={{ position: 'relative' }}>
+    <button
+      onClick={onToggle}
+      title="Tuỳ chọn"
+      aria-label="Tuỳ chọn"
+      className={`chat-msg-actions${open ? ' force-visible' : ''}`}
+      style={{
+        background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '50%',
+        width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', color: 'var(--text-muted)'
+      }}
+    >
+      <IconMoreVertical size={14} />
+    </button>
+    {open && (
+      <div style={{
+        position: 'absolute', top: 26, [align]: 0, zIndex: 20, minWidth: 170,
+        background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+        boxShadow: 'var(--shadow-md)', overflow: 'hidden'
+      }}>
+        {mine && !recalled && (
+          <button onClick={onEdit} style={menuItemStyle}>Chỉnh sửa</button>
+        )}
+        {mine && !recalled && (
+          <button onClick={onRecall} style={menuItemStyle}>Thu hồi</button>
+        )}
+        <button onClick={onDeleteForMe} style={{ ...menuItemStyle, color: 'var(--danger)' }}>Xoá chỉ ở phía tôi</button>
+      </div>
+    )}
+  </div>
+);
+
+const menuItemStyle = {
+  display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px',
+  background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text)'
+};
+
 const MessageThread = ({ conversation, currentUserId, socket }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(true);
   const [typingUser, setTypingUser] = useState(null);
   const [showMembers, setShowMembers] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editValue, setEditValue] = useState('');
   const bottomRef = useRef(null);
+  const containerRef = useRef(null);
+  const pendingScrollAdjustRef = useRef(null);
+  const loadingMoreRef = useRef(false);
   const conversationId = conversation.ConversationID;
 
   const markRead = (lastMessageId) => {
@@ -46,11 +97,14 @@ const MessageThread = ({ conversation, currentUserId, socket }) => {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setHasMore(true);
     getMessages(conversationId).then(res => {
       if (cancelled) return;
-      setMessages(res.data || []);
+      const list = res.data || [];
+      setMessages(list);
+      setHasMore(list.length >= 50);
       setLoading(false);
-      const last = (res.data || [])[res.data.length - 1];
+      const last = list[list.length - 1];
       if (last) markRead(last.MessageID);
     }).catch(() => setLoading(false));
 
@@ -63,17 +117,84 @@ const MessageThread = ({ conversation, currentUserId, socket }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
+  const loadOlder = () => {
+    // Chặn bằng ref (đồng bộ) thay vì state — nhiều sự kiện scroll dồn dập trước khi
+    // React re-render vẫn thấy state cũ và có thể cùng lọt qua, gây tải trùng.
+    if (loadingMoreRef.current || !hasMore || messages.length === 0) return;
+    loadingMoreRef.current = true;
+    const oldest = messages[0].MessageID;
+    getMessages(conversationId, oldest).then(res => {
+      const older = res.data || [];
+      if (!older.length) {
+        setHasMore(false);
+        return;
+      }
+      if (containerRef.current) {
+        pendingScrollAdjustRef.current = {
+          container: containerRef.current,
+          prevScrollHeight: containerRef.current.scrollHeight
+        };
+      }
+      setMessages(prev => [...older, ...prev]);
+      if (older.length < 50) setHasMore(false);
+    }).catch(() => {}).finally(() => { loadingMoreRef.current = false; });
+  };
+
+  const handleScroll = () => {
+    const el = containerRef.current;
+    if (el && el.scrollTop < 40) loadOlder();
+  };
+
   useEffect(() => {
-    const handleNewMessage = (message) => {
+    const upsert = (message) => {
       if (message.ConversationID !== conversationId) return;
       setMessages(prev => {
         const idx = prev.findIndex(m => m.MessageID === message.MessageID);
-        if (idx === -1) return [...prev, message];
+        if (idx !== -1) {
+          const next = [...prev];
+          next[idx] = message;
+          return next;
+        }
+        const next = [...prev, message];
+        // Chỉ cắt bớt khi người dùng đang ở gần cuối khung chat — nếu họ đang cuộn lên
+        // đọc lịch sử cũ, cắt ngay lúc này sẽ làm mất nội dung đang xem trước mắt họ.
+        if (next.length > MAX_MESSAGES_IN_MEMORY) {
+          const el = containerRef.current;
+          const nearBottom = !el || (el.scrollHeight - el.scrollTop - el.clientHeight < 200);
+          if (nearBottom) {
+            setHasMore(true);
+            return next.slice(next.length - TRIM_TARGET);
+          }
+        }
+        return next;
+      });
+    };
+
+    // Sửa/thu hồi chỉ CẬP NHẬT tin nhắn đã có sẵn trong state, không bao giờ thêm mới —
+    // nếu không tìm thấy (đã bị cắt khỏi bộ nhớ, chưa tải, hoặc người dùng đã "xoá chỉ
+    // ở phía tôi"), bỏ qua thay vì nối vào cuối danh sách (tránh hồi sinh tin nhắn đã xoá
+    // hoặc hiển thị sai thứ tự thời gian).
+    const replaceIfPresent = (message) => {
+      if (message.ConversationID !== conversationId) return;
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m.MessageID === message.MessageID);
+        if (idx === -1) return prev;
         const next = [...prev];
         next[idx] = message;
         return next;
       });
-      if (message.SenderID !== currentUserId) markRead(message.MessageID);
+    };
+
+    const handleNewMessage = (message) => {
+      upsert(message);
+      if (message.ConversationID === conversationId && message.SenderID !== currentUserId) markRead(message.MessageID);
+    };
+
+    const handleEditedOrRecalled = (message) => replaceIfPresent(message);
+
+    const handleDeletedForMe = ({ messageId, conversationId: cid }) => {
+      if (cid !== conversationId) return;
+      setMessages(prev => prev.filter(m => m.MessageID !== messageId));
     };
 
     const handleTyping = ({ conversationId: cid, userId, isTyping }) => {
@@ -82,17 +203,40 @@ const MessageThread = ({ conversation, currentUserId, socket }) => {
     };
 
     socket.on('message:new', handleNewMessage);
+    socket.on('message:edited', handleEditedOrRecalled);
+    socket.on('message:recalled', handleEditedOrRecalled);
+    socket.on('message:deletedForMe', handleDeletedForMe);
     socket.on('typing:update', handleTyping);
     return () => {
       socket.off('message:new', handleNewMessage);
+      socket.off('message:edited', handleEditedOrRecalled);
+      socket.off('message:recalled', handleEditedOrRecalled);
+      socket.off('message:deletedForMe', handleDeletedForMe);
       socket.off('typing:update', handleTyping);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, socket, currentUserId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Phải nằm trong CÙNG 1 effect: tách thành 2 effect [messages] riêng biệt khiến effect
+    // sau luôn thấy ref đã bị effect trước xoá, nên luôn cuộn xuống đáy dù vừa tải tin cũ.
+    const adj = pendingScrollAdjustRef.current;
+    if (adj) {
+      adj.container.scrollTop = adj.container.scrollHeight - adj.prevScrollHeight;
+      pendingScrollAdjustRef.current = null;
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
+
+  useEffect(() => {
+    if (openMenuId == null) return;
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.chat-msg-actions-wrap')) setOpenMenuId(null);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [openMenuId]);
 
   const handleTypingChange = (isTyping) => {
     socket.emit(isTyping ? 'typing:start' : 'typing:stop', { conversationId });
@@ -115,6 +259,48 @@ const MessageThread = ({ conversation, currentUserId, socket }) => {
         }
       }
     });
+  };
+
+  const startEdit = (m) => {
+    setOpenMenuId(null);
+    setEditingId(m.MessageID);
+    setEditValue(m.Content || '');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditValue('');
+  };
+
+  const saveEdit = async (messageId) => {
+    const content = editValue.trim();
+    if (!content) return;
+    try {
+      await editMessage(messageId, content);
+      cancelEdit();
+    } catch (err) {
+      showToastError(err.response?.data?.error || 'Không thể sửa tin nhắn!');
+    }
+  };
+
+  const handleRecall = async (m) => {
+    setOpenMenuId(null);
+    if (!window.confirm('Thu hồi tin nhắn này với mọi người?')) return;
+    try {
+      await recallMessage(m.MessageID);
+    } catch (err) {
+      showToastError(err.response?.data?.error || 'Không thể thu hồi tin nhắn!');
+    }
+  };
+
+  const handleDeleteForMe = async (m) => {
+    setOpenMenuId(null);
+    if (!window.confirm('Xoá tin nhắn này chỉ ở phía bạn? Người khác vẫn thấy bình thường.')) return;
+    try {
+      await deleteMessageForMe(m.MessageID);
+    } catch (err) {
+      showToastError(err.response?.data?.error || 'Không thể xoá tin nhắn!');
+    }
   };
 
   return (
@@ -150,29 +336,74 @@ const MessageThread = ({ conversation, currentUserId, socket }) => {
         />
       )}
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div ref={containerRef} onScroll={handleScroll} style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {loading ? (
           <LoadingState label="Đang tải tin nhắn..." padding={20} />
         ) : messages.map(m => {
           const mine = m.SenderID === currentUserId;
+          const isEditing = editingId === m.MessageID;
           return (
-            <div key={m.MessageID} style={{ display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start' }}>
+            <div key={m.MessageID} className="chat-msg-row" style={{ display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start' }}>
               {!mine && conversation.IsGroup && (
                 <span style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{m.SenderName}</span>
               )}
-              <div style={{
-                maxWidth: '72%', padding: '9px 13px',
-                borderRadius: mine ? '15px 15px 4px 15px' : '15px 15px 15px 4px',
-                background: mine ? 'var(--accent)' : 'var(--surface)',
-                color: mine ? 'var(--accent-fg)' : 'var(--text)',
-                border: mine ? 'none' : '1px solid var(--border)',
-                boxShadow: 'var(--shadow-sm)'
-              }}>
-                {m.Content && <div style={{ fontSize: 13.5, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.Content}</div>}
-                {(m.Attachments || []).map(att => <AttachmentView key={att.AttachmentID} att={att} mine={mine} />)}
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, flexDirection: mine ? 'row-reverse' : 'row', maxWidth: '85%' }}>
+                <div style={{
+                  maxWidth: '100%', padding: '9px 13px',
+                  borderRadius: mine ? '15px 15px 4px 15px' : '15px 15px 15px 4px',
+                  background: mine ? 'var(--accent)' : 'var(--surface)',
+                  color: mine ? 'var(--accent-fg)' : 'var(--text)',
+                  border: mine ? 'none' : '1px solid var(--border)',
+                  boxShadow: 'var(--shadow-sm)'
+                }}>
+                  {m.IsRecalled ? (
+                    <div style={{ fontSize: 13.5, fontStyle: 'italic', opacity: 0.75 }}>Tin nhắn đã được thu hồi</div>
+                  ) : isEditing ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 180 }}>
+                      <textarea
+                        autoFocus
+                        value={editValue}
+                        onChange={e => setEditValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(m.MessageID); }
+                          if (e.key === 'Escape') cancelEdit();
+                        }}
+                        rows={2}
+                        style={{
+                          resize: 'vertical', fontSize: 13.5, padding: 6, borderRadius: 6,
+                          border: '1px solid var(--border)', color: 'var(--text)', background: 'var(--bg)'
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <button onClick={cancelEdit} style={{ ...menuItemStyle, width: 'auto', padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6 }}>Huỷ</button>
+                        <button onClick={() => saveEdit(m.MessageID)} style={{ ...menuItemStyle, width: 'auto', padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, fontWeight: 600 }}>Lưu</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {m.Content && <div style={{ fontSize: 13.5, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.Content}</div>}
+                      {(m.Attachments || []).map(att => <AttachmentView key={att.AttachmentID} att={att} mine={mine} />)}
+                    </>
+                  )}
+                </div>
+
+                {!isEditing && (
+                  <MessageActionsMenu
+                    mine={mine}
+                    recalled={!!m.IsRecalled}
+                    align={mine ? 'right' : 'left'}
+                    open={openMenuId === m.MessageID}
+                    onToggle={() => setOpenMenuId(prev => prev === m.MessageID ? null : m.MessageID)}
+                    onEdit={() => startEdit(m)}
+                    onRecall={() => handleRecall(m)}
+                    onDeleteForMe={() => handleDeleteForMe(m)}
+                  />
+                )}
               </div>
+
               <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 3 }}>
                 {new Date(m.CreatedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                {m.IsEdited && !m.IsRecalled && ' · đã chỉnh sửa'}
               </span>
             </div>
           );

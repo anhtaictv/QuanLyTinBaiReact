@@ -1,10 +1,11 @@
 const path = require('path');
 const fs = require('fs');
-const { poolPromise } = require('../config/db');
+const { sql, poolPromise } = require('../config/db');
 const { logError } = require('../utils/errorLogger');
 const { isOnline } = require('../sockets/socketRegistry');
 const { isImageFile, STORAGE_ROOT } = require('../config/chatUpload');
 const { getIO } = require('../sockets/ioHolder');
+const { packContent, unpackContent } = require('../utils/messageCompression');
 
 const GROUP_CREATOR_ROLES = ['admin', 'trưởng ban', 'thư ký'];
 
@@ -18,13 +19,21 @@ async function getMessageWithAttachments(pool, messageId) {
     const msgResult = await pool.request()
         .input('MessageID', messageId)
         .query(`
-            SELECT m.MessageID, m.ConversationID, m.SenderID, u.FullName AS SenderName, m.Content, m.CreatedAt
+            SELECT m.MessageID, m.ConversationID, m.SenderID, u.FullName AS SenderName, m.Content, m.ContentBin, m.IsCompressed, m.CreatedAt,
+                   m.IsEdited, m.EditedAt, m.IsRecalled
             FROM dbo.Messages m
             JOIN dbo.Users u ON u.UserID = m.SenderID
             WHERE m.MessageID = @MessageID
         `);
-    const message = msgResult.recordset[0];
+    const message = unpackContent(msgResult.recordset[0]);
     if (!message) return null;
+
+    // Tin nhắn đã thu hồi: không trả nội dung/đính kèm gốc cho client.
+    if (message.IsRecalled) {
+        message.Content = null;
+        message.Attachments = [];
+        return message;
+    }
 
     const attResult = await pool.request()
         .input('MessageID', messageId)
@@ -53,10 +62,13 @@ exports.getConversations = async (req, res) => {
                     cm.LastReadMessageID, cm.IsAdmin AS MyIsAdmin,
                     (SELECT COUNT(*) FROM dbo.Messages m
                      WHERE m.ConversationID = c.ConversationID AND m.IsDeleted = 0
-                       AND m.MessageID > ISNULL(cm.LastReadMessageID, 0)) AS UnreadCount,
-                    (SELECT TOP 1 m2.Content FROM dbo.Messages m2
+                       AND m.MessageID > ISNULL(cm.LastReadMessageID, 0)
+                       AND NOT EXISTS (SELECT 1 FROM dbo.MessageHiddenFor hf WHERE hf.MessageID = m.MessageID AND hf.UserID = @UserID)) AS UnreadCount,
+                    (SELECT TOP 1 m2.MessageID
+                     FROM dbo.Messages m2
                      WHERE m2.ConversationID = c.ConversationID AND m2.IsDeleted = 0
-                     ORDER BY m2.MessageID DESC) AS LastMessage,
+                       AND NOT EXISTS (SELECT 1 FROM dbo.MessageHiddenFor hf2 WHERE hf2.MessageID = m2.MessageID AND hf2.UserID = @UserID)
+                     ORDER BY m2.MessageID DESC) AS LastMessageID,
                     (SELECT TOP 1 ocm.UserID FROM dbo.ConversationMembers ocm
                      WHERE ocm.ConversationID = c.ConversationID AND ocm.UserID <> @UserID) AS OtherMemberID,
                     (SELECT TOP 1 u.FullName FROM dbo.ConversationMembers ocm
@@ -67,8 +79,26 @@ exports.getConversations = async (req, res) => {
                 ORDER BY c.LastMessageAt DESC
             `);
 
-        const conversations = (result.recordset || []).map(c => ({
+        const rows = result.recordset || [];
+        const lastMessageIds = rows.map(c => c.LastMessageID).filter(Boolean);
+
+        let lastMessageById = {};
+        if (lastMessageIds.length) {
+            const idList = lastMessageIds.join(',');
+            const lastMsgResult = await pool.request().query(`
+                SELECT MessageID, Content, ContentBin, IsCompressed, IsRecalled
+                FROM dbo.Messages
+                WHERE MessageID IN (${idList})
+            `);
+            for (const row of lastMsgResult.recordset || []) {
+                const unpacked = unpackContent(row);
+                lastMessageById[unpacked.MessageID] = unpacked.IsRecalled ? 'Tin nhắn đã được thu hồi' : unpacked.Content;
+            }
+        }
+
+        const conversations = rows.map(c => ({
             ...c,
+            LastMessage: c.LastMessageID ? lastMessageById[c.LastMessageID] : null,
             DisplayName: c.IsGroup ? c.Title : c.OtherMemberName,
             OtherMemberOnline: !c.IsGroup && c.OtherMemberID ? isOnline(c.OtherMemberID) : undefined
         }));
@@ -101,6 +131,7 @@ exports.getMessages = async (req, res) => {
 
         const request = pool.request()
             .input('ConversationID', conversationId)
+            .input('UserID', userId)
             .input('Limit', limit);
         let beforeClause = '';
         if (before) {
@@ -109,14 +140,16 @@ exports.getMessages = async (req, res) => {
         }
 
         const msgResult = await request.query(`
-            SELECT TOP (@Limit) m.MessageID, m.ConversationID, m.SenderID, u.FullName AS SenderName, m.Content, m.CreatedAt
+            SELECT TOP (@Limit) m.MessageID, m.ConversationID, m.SenderID, u.FullName AS SenderName, m.Content, m.ContentBin, m.IsCompressed, m.CreatedAt,
+                   m.IsEdited, m.EditedAt, m.IsRecalled
             FROM dbo.Messages m
             JOIN dbo.Users u ON u.UserID = m.SenderID
             WHERE m.ConversationID = @ConversationID AND m.IsDeleted = 0 ${beforeClause}
+              AND NOT EXISTS (SELECT 1 FROM dbo.MessageHiddenFor hf WHERE hf.MessageID = m.MessageID AND hf.UserID = @UserID)
             ORDER BY m.MessageID DESC
         `);
 
-        const messages = msgResult.recordset || [];
+        const messages = (msgResult.recordset || []).map(unpackContent);
         const messageIds = messages.map(m => m.MessageID);
 
         let attachmentsByMessage = {};
@@ -133,7 +166,11 @@ exports.getMessages = async (req, res) => {
             }
         }
 
-        const withAttachments = messages.map(m => ({ ...m, Attachments: attachmentsByMessage[m.MessageID] || [] }));
+        const withAttachments = messages.map(m => ({
+            ...m,
+            Content: m.IsRecalled ? null : m.Content,
+            Attachments: m.IsRecalled ? [] : (attachmentsByMessage[m.MessageID] || [])
+        }));
         withAttachments.reverse(); // trả về cũ -> mới
 
         res.json(withAttachments);
@@ -412,6 +449,131 @@ exports.downloadAttachment = async (req, res) => {
         res.sendFile(fullPath);
     } catch (err) {
         logError({ source: 'chatController.downloadAttachment', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/chat/messages/:id  { content }
+// ─────────────────────────────────────────────────────────────────────────────
+exports.editMessage = async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const userId = req.user.UserID;
+        const messageId = parseInt(req.params.id);
+        const content = (req.body.content || '').trim();
+
+        if (!content) {
+            return res.status(400).json({ error: 'Nội dung tin nhắn trống!' });
+        }
+
+        const msgResult = await pool.request()
+            .input('MessageID', messageId)
+            .query('SELECT ConversationID, SenderID, IsRecalled FROM dbo.Messages WHERE MessageID = @MessageID AND IsDeleted = 0');
+        const msg = msgResult.recordset[0];
+        if (!msg || msg.SenderID !== userId) {
+            return res.status(403).json({ error: 'Bạn không thể sửa tin nhắn này!' });
+        }
+        if (msg.IsRecalled) {
+            return res.status(400).json({ error: 'Tin nhắn đã bị thu hồi, không thể sửa!' });
+        }
+
+        const packed = packContent(content);
+        await pool.request()
+            .input('MessageID', messageId)
+            .input('Content', packed.content)
+            .input('ContentBin', sql.VarBinary(sql.MAX), packed.contentBin)
+            .input('IsCompressed', packed.isCompressed)
+            .query(`
+                UPDATE dbo.Messages
+                SET Content = @Content, ContentBin = @ContentBin, IsCompressed = @IsCompressed, IsEdited = 1, EditedAt = GETDATE()
+                WHERE MessageID = @MessageID
+            `);
+
+        const updatedMessage = await getMessageWithAttachments(pool, messageId);
+        const io = getIO();
+        if (io) io.to(`conv:${msg.ConversationID}`).emit('message:edited', updatedMessage);
+
+        res.json({ success: true, message: updatedMessage });
+    } catch (err) {
+        logError({ source: 'chatController.editMessage', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/chat/messages/:id/recall — thu hồi với mọi người (giống Zalo)
+// ─────────────────────────────────────────────────────────────────────────────
+exports.recallMessage = async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const userId = req.user.UserID;
+        const messageId = parseInt(req.params.id);
+
+        const msgResult = await pool.request()
+            .input('MessageID', messageId)
+            .query('SELECT ConversationID, SenderID FROM dbo.Messages WHERE MessageID = @MessageID AND IsDeleted = 0');
+        const msg = msgResult.recordset[0];
+        if (!msg || msg.SenderID !== userId) {
+            return res.status(403).json({ error: 'Bạn không thể thu hồi tin nhắn này!' });
+        }
+
+        await pool.request()
+            .input('MessageID', messageId)
+            .query(`
+                UPDATE dbo.Messages
+                SET IsRecalled = 1, RecalledAt = GETDATE()
+                WHERE MessageID = @MessageID
+            `);
+
+        const updatedMessage = await getMessageWithAttachments(pool, messageId);
+        const io = getIO();
+        if (io) io.to(`conv:${msg.ConversationID}`).emit('message:recalled', updatedMessage);
+
+        res.json({ success: true, message: updatedMessage });
+    } catch (err) {
+        logError({ source: 'chatController.recallMessage', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/chat/messages/:id — xoá chỉ ở phía mình, không ảnh hưởng người khác
+// ─────────────────────────────────────────────────────────────────────────────
+exports.deleteMessageForMe = async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const userId = req.user.UserID;
+        const messageId = parseInt(req.params.id);
+
+        const memberCheck = await pool.request()
+            .input('MessageID', messageId)
+            .input('UserID', userId)
+            .query(`
+                SELECT m.ConversationID FROM dbo.Messages m
+                JOIN dbo.ConversationMembers cm ON cm.ConversationID = m.ConversationID AND cm.UserID = @UserID
+                WHERE m.MessageID = @MessageID
+            `);
+        if (!memberCheck.recordset.length) {
+            return res.status(403).json({ error: 'Bạn không có quyền xoá tin nhắn này!' });
+        }
+        const conversationId = memberCheck.recordset[0].ConversationID;
+
+        await pool.request()
+            .input('MessageID', messageId)
+            .input('UserID', userId)
+            .query(`
+                IF NOT EXISTS (SELECT 1 FROM dbo.MessageHiddenFor WHERE MessageID = @MessageID AND UserID = @UserID)
+                INSERT INTO dbo.MessageHiddenFor (MessageID, UserID) VALUES (@MessageID, @UserID)
+            `);
+
+        // Chỉ báo lại cho chính người dùng này (các tab/thiết bị khác) — không ảnh hưởng người khác.
+        const io = getIO();
+        if (io) io.to(`user:${userId}`).emit('message:deletedForMe', { messageId, conversationId });
+
+        res.json({ success: true });
+    } catch (err) {
+        logError({ source: 'chatController.deleteMessageForMe', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: err.message });
     }
 };

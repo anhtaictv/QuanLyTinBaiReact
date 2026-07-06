@@ -55,14 +55,38 @@ const tables = [
           IsImage        BIT NOT NULL DEFAULT 0
       );
     `
+  },
+  {
+    // Ẩn tin nhắn theo từng người dùng (xoá "chỉ mình") — không ảnh hưởng người khác trong hội thoại.
+    name: 'MessageHiddenFor',
+    sql: `
+      CREATE TABLE dbo.MessageHiddenFor (
+          MessageID  INT NOT NULL,
+          UserID     INT NOT NULL,
+          HiddenAt   DATETIME NOT NULL DEFAULT GETDATE(),
+          PRIMARY KEY (MessageID, UserID)
+      );
+    `
   }
+];
+
+// Cột thêm vào bảng đã tồn tại (sửa / thu hồi tin nhắn kiểu Zalo).
+const columns = [
+  { table: 'Messages', name: 'IsEdited', sql: `ALTER TABLE dbo.Messages ADD IsEdited BIT NOT NULL DEFAULT 0;` },
+  { table: 'Messages', name: 'EditedAt', sql: `ALTER TABLE dbo.Messages ADD EditedAt DATETIME NULL;` },
+  { table: 'Messages', name: 'IsRecalled', sql: `ALTER TABLE dbo.Messages ADD IsRecalled BIT NOT NULL DEFAULT 0;` },
+  { table: 'Messages', name: 'RecalledAt', sql: `ALTER TABLE dbo.Messages ADD RecalledAt DATETIME NULL;` },
+  // Nén nội dung tin nhắn dài để giảm dung lượng lưu trữ (xem utils/messageCompression.js).
+  { table: 'Messages', name: 'ContentBin', sql: `ALTER TABLE dbo.Messages ADD ContentBin VARBINARY(MAX) NULL;` },
+  { table: 'Messages', name: 'IsCompressed', sql: `ALTER TABLE dbo.Messages ADD IsCompressed BIT NOT NULL DEFAULT 0;` }
 ];
 
 const indexes = [
   { name: 'UX_ConvMembers_Conv_User', table: 'ConversationMembers', sql: `CREATE UNIQUE INDEX UX_ConvMembers_Conv_User ON dbo.ConversationMembers(ConversationID, UserID);` },
   { name: 'IX_ConvMembers_User', table: 'ConversationMembers', sql: `CREATE INDEX IX_ConvMembers_User ON dbo.ConversationMembers(UserID);` },
   { name: 'IX_Messages_Conv_Created', table: 'Messages', sql: `CREATE INDEX IX_Messages_Conv_Created ON dbo.Messages(ConversationID, MessageID DESC);` },
-  { name: 'IX_Attachments_Message', table: 'MessageAttachments', sql: `CREATE INDEX IX_Attachments_Message ON dbo.MessageAttachments(MessageID);` }
+  { name: 'IX_Attachments_Message', table: 'MessageAttachments', sql: `CREATE INDEX IX_Attachments_Message ON dbo.MessageAttachments(MessageID);` },
+  { name: 'IX_MessageHiddenFor_User', table: 'MessageHiddenFor', sql: `CREATE INDEX IX_MessageHiddenFor_User ON dbo.MessageHiddenFor(UserID);` }
 ];
 
 (async () => {
@@ -77,6 +101,17 @@ const indexes = [
       END
     `);
     console.log(`Bảng ${t.name} OK.`);
+  }
+
+  for (const col of columns) {
+    console.log(`Đang thêm cột ${col.table}.${col.name} (nếu chưa có)...`);
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.${col.table}') AND name = '${col.name}')
+      BEGIN
+        ${col.sql}
+      END
+    `);
+    console.log(`Cột ${col.table}.${col.name} OK.`);
   }
 
   for (const idx of indexes) {

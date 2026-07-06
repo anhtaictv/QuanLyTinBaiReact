@@ -14,3 +14,9 @@ export const removeMember = (conversationId, userId) =>
 export const uploadChatFile = (formData) =>
   api.post('/chat/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 export const getBasicUsers = () => api.get('/users/basic');
+export const editMessage = (messageId, content) =>
+  api.patch(`/chat/messages/${messageId}`, { content });
+export const recallMessage = (messageId) =>
+  api.post(`/chat/messages/${messageId}/recall`);
+export const deleteMessageForMe = (messageId) =>
+  api.delete(`/chat/messages/${messageId}`);

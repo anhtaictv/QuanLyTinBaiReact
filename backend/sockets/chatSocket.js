@@ -1,9 +1,10 @@
 const jwt = require('jsonwebtoken');
-const { poolPromise } = require('../config/db');
+const { sql, poolPromise } = require('../config/db');
 const { addSocket, removeSocket, isOnline } = require('./socketRegistry');
 const { getMessageWithAttachments } = require('../controllers/chatController');
 const { sendPushToUser } = require('../routes/pushRoutes');
 const { logError } = require('../utils/errorLogger');
+const { packContent } = require('../utils/messageCompression');
 
 function initChatSocket(io) {
     io.use((socket, next) => {
@@ -86,14 +87,17 @@ function initChatSocket(io) {
                     return;
                 }
 
+                const packed = packContent(content);
                 const insertResult = await pool.request()
                     .input('ConversationID', conversationId)
                     .input('SenderID', userId)
-                    .input('Content', content)
+                    .input('Content', packed.content)
+                    .input('ContentBin', sql.VarBinary(sql.MAX), packed.contentBin)
+                    .input('IsCompressed', packed.isCompressed)
                     .query(`
-                        INSERT INTO dbo.Messages (ConversationID, SenderID, Content, CreatedAt)
+                        INSERT INTO dbo.Messages (ConversationID, SenderID, Content, ContentBin, IsCompressed, CreatedAt)
                         OUTPUT INSERTED.MessageID
-                        VALUES (@ConversationID, @SenderID, @Content, GETDATE())
+                        VALUES (@ConversationID, @SenderID, @Content, @ContentBin, @IsCompressed, GETDATE())
                     `);
                 const messageId = insertResult.recordset[0].MessageID;
 

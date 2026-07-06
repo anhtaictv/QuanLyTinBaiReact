@@ -140,6 +140,16 @@ tbody tr:hover { background: var(--surface-2); }
    tránh cảm giác giật khi đang cuộn danh sách) */
 .hoverable-row:hover { background: var(--surface-2); }
 
+/* Nút "..." trên mỗi tin nhắn chat: chỉ hiện khi rê chuột vào dòng tin nhắn đó
+   (hoặc khi menu đang mở), giống Zalo/Messenger — tránh rối giao diện khi không cần. */
+.chat-msg-row .chat-msg-actions { opacity: 0; pointer-events: none; transition: opacity .12s ease; }
+.chat-msg-row:hover .chat-msg-actions,
+.chat-msg-row .chat-msg-actions.force-visible { opacity: 1; pointer-events: auto; }
+/* Thiết bị cảm ứng không có :hover — hiện luôn nút, nếu không sẽ không có cách nào bấm được. */
+@media (hover: none) {
+  .chat-msg-row .chat-msg-actions { opacity: 1; pointer-events: auto; }
+}
+
 @keyframes icon-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }

@@ -44,10 +44,19 @@ const Chat = () => {
     const handlePresence = ({ userId, online }) => {
       setConversations(prev => prev.map(c => c.OtherMemberID === userId ? { ...c, OtherMemberOnline: online } : c));
     };
+    // Sửa/thu hồi/xoá-chỉ-mình đều có thể đổi LastMessage hoặc số chưa đọc hiển thị ở
+    // sidebar — đồng bộ lại từ server cho chắc (giống cách ChatBell xử lý các sự kiện này).
+    const handleMutated = () => fetchConversations();
     socket.on('message:new', handleNewMessage);
+    socket.on('message:edited', handleMutated);
+    socket.on('message:recalled', handleMutated);
+    socket.on('message:deletedForMe', handleMutated);
     socket.on('presence:update', handlePresence);
     return () => {
       socket.off('message:new', handleNewMessage);
+      socket.off('message:edited', handleMutated);
+      socket.off('message:recalled', handleMutated);
+      socket.off('message:deletedForMe', handleMutated);
       socket.off('presence:update', handlePresence);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

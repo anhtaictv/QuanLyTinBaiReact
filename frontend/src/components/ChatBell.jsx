@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { getConversations } from '../services/chatService';
 import { useChatSocket } from '../hooks/useChatSocket';
 import { showToastSuccess } from '../utils/Toast';
@@ -20,6 +20,14 @@ const ChatBell = () => {
   const pos = useDropdownPosition(open, buttonRef, PANEL_WIDTH);
   const socket = useChatSocket();
   const navigate = useNavigate();
+  const location = useLocation();
+  const openConversationIdRef = useRef(null);
+  const currentUserId = (JSON.parse(localStorage.getItem('user')) || {}).UserID;
+
+  useEffect(() => {
+    const match = location.pathname.match(/^\/chat\/(\d+)/);
+    openConversationIdRef.current = match ? Number(match[1]) : null;
+  }, [location.pathname]);
 
   const fetchConversations = async () => {
     try {
@@ -39,6 +47,10 @@ const ChatBell = () => {
 
   useEffect(() => {
     const handleNewMessage = (message) => {
+      const isOwnMessage = message.SenderID === currentUserId;
+      const isViewingThisConversation = openConversationIdRef.current === message.ConversationID;
+      const shouldCountUnread = !isOwnMessage && !isViewingThisConversation;
+
       setConversations(prev => {
         const exists = prev.some(c => c.ConversationID === message.ConversationID);
         if (!exists) {
@@ -46,29 +58,39 @@ const ChatBell = () => {
           return prev;
         }
         return prev.map(c => c.ConversationID === message.ConversationID
-          ? { ...c, LastMessage: message.Content, UnreadCount: (c.UnreadCount || 0) + 1 }
+          ? { ...c, LastMessage: message.Content, UnreadCount: shouldCountUnread ? (c.UnreadCount || 0) + 1 : (isOwnMessage ? c.UnreadCount : 0) }
           : c
         );
       });
+
+      if (!shouldCountUnread) return;
+
       setCount(prev => prev + 1);
-      if (window.location.pathname !== '/chat') {
-        showToastSuccess(`${message.SenderName}: ${message.Content || '[Đính kèm]'}`);
-      }
+      showToastSuccess(`${message.SenderName}: ${message.Content || '[Đính kèm]'}`);
     };
 
     const handleUnreadUpdate = () => {
       fetchConversations();
     };
 
+    // Sửa / thu hồi / xoá-chỉ-mình đều có thể làm thay đổi LastMessage hoặc số chưa đọc
+    // hiển thị trên chuông — đơn giản và chắc chắn nhất là đồng bộ lại từ server.
     socket.on('message:new', handleNewMessage);
+    socket.on('message:edited', handleUnreadUpdate);
+    socket.on('message:recalled', handleUnreadUpdate);
+    socket.on('message:deletedForMe', handleUnreadUpdate);
     socket.on('unread:update', handleUnreadUpdate);
     socket.on('read:update', handleUnreadUpdate);
 
     return () => {
       socket.off('message:new', handleNewMessage);
+      socket.off('message:edited', handleUnreadUpdate);
+      socket.off('message:recalled', handleUnreadUpdate);
+      socket.off('message:deletedForMe', handleUnreadUpdate);
       socket.off('unread:update', handleUnreadUpdate);
       socket.off('read:update', handleUnreadUpdate);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
 
   useEffect(() => {
