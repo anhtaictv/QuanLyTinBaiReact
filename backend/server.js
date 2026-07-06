@@ -20,6 +20,26 @@ const { logError } = require('./utils/errorLogger');
 
 const app = express(); // ✅ khai báo app trước
 
+// App chạy sau đúng 2 lớp reverse-proxy IIS nội bộ (qltb_proxy -> qltin-frontend), cả hai
+// đều chạy trên cùng máy này. Nếu không khai báo, Express dùng thẳng socket IP (luôn là
+// chặng proxy cuối) làm "IP người dùng" cho MỌI request — rate-limit chống brute-force khi
+// đó vô tác dụng (tất cả mọi người tính chung 1 IP). Chỉ 2 vì Node giờ chỉ nhận traffic từ
+// 127.0.0.1 (xem httpServer.listen bên dưới) — không có đường nào bỏ qua 2 chặng proxy này.
+app.set('trust proxy', 2);
+
+// IIS ARR ở đây ghi mỗi chặng X-Forwarded-For dạng "ip:port" thay vì chuẩn "ip" — chuẩn
+// hoá lại trước khi Express/express-rate-limit đọc, nếu không việc lấy IP thật ở trên sẽ sai.
+app.use((req, res, next) => {
+    const xff = req.headers['x-forwarded-for'];
+    if (xff) {
+        req.headers['x-forwarded-for'] = xff
+            .split(',')
+            .map(part => part.trim().replace(/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d+$/, '$1'))
+            .join(', ');
+    }
+    next();
+});
+
 // Middleware
 app.use(cors({
     origin: true,
@@ -31,18 +51,27 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Chặn brute-force đăng nhập/đăng ký: tối đa 20 request / 15 phút / IP
+// Chặn brute-force đăng nhập/đăng ký theo IP thật (xem trust proxy ở trên).
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 20,
+    max: 8,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Quá nhiều yêu cầu, vui lòng thử lại sau!' }
+});
+// Chặn dồn dập trong thời gian ngắn (vd script thử hàng chục mật khẩu/giây) — cùng lúc
+// với giới hạn 15 phút ở trên, không thay thế.
+const authBurstLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 4,
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, message: 'Quá nhiều yêu cầu, vui lòng thử lại sau!' }
 });
 
 // --- ROUTE CÔNG KHAI ---
-app.post('/api/login', authLimiter, authController.login);
-app.post('/api/register', authLimiter, authController.register);
+app.post('/api/login', authBurstLimiter, authLimiter, authController.login);
+app.post('/api/register', authBurstLimiter, authLimiter, authController.register);
 app.post('/api/change-password', verifyToken, authController.changePassword);
 
 // --- ROUTE BẢO VỆ ---
@@ -142,6 +171,9 @@ setIO(io);
 initChatSocket(io);
 
 const PORT = process.env.PORT || 5001;
-httpServer.listen(PORT, () => {
-    console.log(`🚀 Server đang chạy tại port ${PORT}`);
+// Chỉ lắng nghe ở loopback — Node trước đây bind 0.0.0.0 nên bị gọi thẳng từ Internet,
+// bỏ qua toàn bộ lớp reverse-proxy IIS phía trước (và có thể giả mạo X-Forwarded-For để
+// né rate-limit chống brute-force). Mọi traffic hợp lệ đều đi qua IIS proxy trên cùng máy.
+httpServer.listen(PORT, '127.0.0.1', () => {
+    console.log(`🚀 Server đang chạy tại port ${PORT} (chỉ 127.0.0.1)`);
 });

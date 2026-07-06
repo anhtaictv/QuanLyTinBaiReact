@@ -5,6 +5,34 @@ const { logError } = require('../utils/errorLogger');
 
 const SECRET_KEY = process.env.JWT_SECRET;
 
+// Khoá tạm 1 tài khoản sau nhiều lần đăng nhập sai — chặn kiểu tấn công dùng nhiều IP
+// khác nhau (botnet) nhắm vào 1 tài khoản, thứ mà rate-limit theo IP ở server.js không
+// chặn được. Lưu trong bộ nhớ (đủ dùng cho 1 tiến trình; nếu restart thì đếm lại từ đầu).
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_MS = 15 * 60 * 1000;
+const failedLoginTracker = new Map(); // username (lowercase) -> { count, lockedUntil }
+
+function getLockoutRemainingMs(username) {
+    const entry = failedLoginTracker.get(username.toLowerCase());
+    if (!entry || !entry.lockedUntil) return 0;
+    return Math.max(0, entry.lockedUntil - Date.now());
+}
+
+function registerFailedLogin(username) {
+    const key = username.toLowerCase();
+    const entry = failedLoginTracker.get(key) || { count: 0, lockedUntil: 0 };
+    entry.count += 1;
+    if (entry.count >= MAX_FAILED_ATTEMPTS) {
+        entry.lockedUntil = Date.now() + LOCKOUT_MS;
+        entry.count = 0;
+    }
+    failedLoginTracker.set(key, entry);
+}
+
+function clearFailedLogins(username) {
+    failedLoginTracker.delete(username.toLowerCase());
+}
+
 // ================= REGISTER =================
 exports.register = async (req, res) => { 
     const { Username, Password, FullName, Age, Department } = req.body; 
@@ -70,33 +98,44 @@ exports.login = async (req, res) => {
             });
         }
 
-        const pool = await poolPromise; 
+        const lockoutRemainingMs = getLockoutRemainingMs(Username);
+        if (lockoutRemainingMs > 0) {
+            return res.status(429).json({
+                success: false,
+                message: `Tài khoản tạm khoá do đăng nhập sai nhiều lần. Thử lại sau ${Math.ceil(lockoutRemainingMs / 60000)} phút.`
+            });
+        }
+
+        const pool = await poolPromise;
 
         const result = await pool.request()
             .input('u', Username)
             .query(`
-                SELECT UserID, FullName, Username, PasswordHash, Role 
-                FROM dbo.Users 
+                SELECT UserID, FullName, Username, PasswordHash, Role
+                FROM dbo.Users
                 WHERE Username = @u
-            `); 
+            `);
 
-        const user = result.recordset[0]; 
+        const user = result.recordset[0];
 
         if (!user) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'Tài khoản không tồn tại!' 
+            return res.status(401).json({
+                success: false,
+                message: 'Tài khoản không tồn tại!'
             });
         }
 
         const isMatch = await bcrypt.compare(Password, user.PasswordHash);
 
         if (!isMatch) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'Sai mật khẩu!' 
-            }); 
+            registerFailedLogin(Username);
+            return res.status(401).json({
+                success: false,
+                message: 'Sai mật khẩu!'
+            });
         }
+
+        clearFailedLogins(Username);
 
         const token = jwt.sign(
             { UserID: user.UserID, Role: user.Role }, 
