@@ -6,6 +6,11 @@ export default defineConfig({
   build: {
     outDir: 'build',
   },
+  test: {
+    environment: 'jsdom',
+    setupFiles: './src/setupTests.js',
+    globals: true,
+  },
   server: {
     port: 3000,
     proxy: {
