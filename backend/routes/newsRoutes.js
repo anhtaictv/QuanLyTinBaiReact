@@ -4,6 +4,7 @@ const newsController = require('../controllers/newsController');
 
 // ✅ Sửa lại đường dẫn và import cả 2 hàm
 const { verifyToken, isAdmin, requireRoles } = require('../middleware/authMiddleware');
+const { handleValidation, createNewsRules } = require('../middleware/validators');
 
 // Áp dụng verifyToken cho tất cả các route bên dưới để bảo mật
 router.use(verifyToken);
@@ -13,7 +14,7 @@ const APPROVE_ROLES = ['admin', 'người duyệt', 'trưởng ban', 'thư ký']
 const LOCK_ROLES     = ['admin', 'trưởng ban'];
 
 router.get('/', newsController.getAllNews);
-router.post('/', newsController.createNews);
+router.post('/', createNewsRules, handleValidation, newsController.createNews);
 router.get('/stats', newsController.getDashboardStats);
 router.put('/:id/status', requireRoles(...APPROVE_ROLES), newsController.approveNews);
 

@@ -35,17 +35,10 @@ function clearFailedLogins(username) {
 
 // ================= REGISTER =================
 exports.register = async (req, res) => { 
-    const { Username, Password, FullName, Age, Department } = req.body; 
+    const { Username, Password, FullName, Age, Department } = req.body;
 
     try {
-        if (!Username || !Password || !FullName) {
-            return res.status(400).json({
-                success: false,
-                message: 'Thiếu thông tin bắt buộc!'
-            });
-        }
-
-        const pool = await poolPromise; 
+        const pool = await poolPromise;
         
         const check = await pool.request()
             .input('u', Username)
@@ -88,16 +81,9 @@ exports.register = async (req, res) => {
 
 // ================= LOGIN =================
 exports.login = async (req, res) => { 
-    const { Username, Password } = req.body; 
+    const { Username, Password } = req.body;
 
     try {
-        if (!Username || !Password) {
-            return res.status(400).json({
-                success: false,
-                message: 'Thiếu Username hoặc Password!'
-            });
-        }
-
         const lockoutRemainingMs = getLockoutRemainingMs(Username);
         if (lockoutRemainingMs > 0) {
             return res.status(429).json({
@@ -166,10 +152,6 @@ exports.changePassword = async (req, res) => {
     const userID = req.user.UserID;
 
     try {
-        if (!OldPassword || !NewPassword) {
-            return res.status(400).json({ success: false, message: 'Thiếu thông tin!' });
-        }
-
         const pool = await poolPromise;
         const result = await pool.request()
             .input('uid', userID)

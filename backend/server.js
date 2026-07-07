@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
@@ -10,6 +11,7 @@ const authController = require('./controllers/authController');
 const newsRoutes = require('./routes/newsRoutes');
 const fileRoutes = require('./routes/fileRoutes');
 const { verifyToken, isAdmin } = require('./middleware/authMiddleware');
+const { handleValidation, registerRules, loginRules, changePasswordRules } = require('./middleware/validators');
 const driveRoutes = require('./routes/driveRoutes'); // ✅ chỉ require ở đây
 const pushRoutes = require('./routes/pushRoutes');
 const errorLogRoutes = require('./routes/errorLogRoutes');
@@ -41,6 +43,14 @@ app.use((req, res, next) => {
 });
 
 // Middleware
+// API JSON thuần, không tự render HTML nào (frontend build riêng, serve qua IIS) nên
+// contentSecurityPolicy mặc định gần như vô hại — vẫn giữ cho các header khác (nosniff,
+// HSTS, tắt X-Powered-By...). Mở crossOriginResourcePolicy vì file (Word/PDF) tải qua
+// /api/file có thể được truy cập same-site nhưng khác port lúc dev (Vite :3000 -> API :5001).
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
+
 app.use(cors({
     origin: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -69,10 +79,24 @@ const authBurstLimiter = rateLimit({
     message: { success: false, message: 'Quá nhiều yêu cầu, vui lòng thử lại sau!' }
 });
 
+// Giới hạn chung cho toàn bộ /api — trước đây chỉ /api/login và /api/register có rate
+// limit, các endpoint khác (gửi bài, upload file, chat...) không bị chặn nếu bị spam/dò
+// quét tự động. Ngưỡng đủ rộng để nhiều người cùng cơ quan dùng chung 1 IP văn phòng vẫn
+// thoải mái (ErrorBell tự poll mỗi 30s, vài chục người dùng cùng lúc), chỉ chặn hành vi
+// bất thường (script gọi liên tục).
+const apiLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000,
+    max: 600,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Quá nhiều yêu cầu, vui lòng thử lại sau!' }
+});
+app.use('/api', apiLimiter);
+
 // --- ROUTE CÔNG KHAI ---
-app.post('/api/login', authBurstLimiter, authLimiter, authController.login);
-app.post('/api/register', authBurstLimiter, authLimiter, authController.register);
-app.post('/api/change-password', verifyToken, authController.changePassword);
+app.post('/api/login', authBurstLimiter, authLimiter, loginRules, handleValidation, authController.login);
+app.post('/api/register', authBurstLimiter, authLimiter, registerRules, handleValidation, authController.register);
+app.post('/api/change-password', verifyToken, changePasswordRules, handleValidation, authController.changePassword);
 
 // --- ROUTE BẢO VỆ ---
 app.use('/api/news', verifyToken, newsRoutes);
