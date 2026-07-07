@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { IconSearch, IconUser, IconCheckCircle, IconXCircle, IconClock, IconLock, IconUnlock, IconTrash } from '../components/icons';
+import { IconSearch, IconUser, IconCheckCircle, IconXCircle, IconClock, IconLock, IconUnlock, IconTrash, IconChevronLeft, IconChevronRight } from '../components/icons';
 import LoadingState from '../components/LoadingState';
+
+const PAGE_SIZE = 20;
 
 const NewsList = () => {
   const [posts, setPosts] = useState([]);
@@ -10,8 +12,13 @@ const NewsList = () => {
   const [loading, setLoading] = useState(true);
 
   // --- CÁC STATE MỚI CHO BỘ LỌC NÂNG CAO ---
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchInput, setSearchInput] = useState(''); // giá trị gõ ngay lúc đó
+  const [searchTerm, setSearchTerm]   = useState(''); // giá trị đã debounce, dùng để fetch
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
+
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
 
   const navigate = useNavigate();
 
@@ -23,75 +30,43 @@ const NewsList = () => {
   const canLockOrUnlock = ['admin', 'trưởng ban'].includes(userRole);
   const canDeletePost = ['admin'].includes(userRole);
 
-  // Lấy dữ liệu từ VPS
+  // Gõ tìm kiếm khoan hẵng gọi API ngay — đợi người dùng ngừng gõ 400ms rồi mới fetch,
+  // tránh bắn 1 request mỗi phím bấm.
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(searchInput), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // Đổi bộ lọc/tìm kiếm/ngày thì quay về trang 1
+  useEffect(() => {
+    setPage(1);
+  }, [filter, searchTerm, dateRange.start, dateRange.end]);
+
+  // Lấy dữ liệu từ VPS — lọc/tìm kiếm/phân trang đều thực hiện ở server (bảng có thể
+  // lớn dần, không kéo hết về client mỗi lần tải trang nữa).
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [postsRes] = await Promise.all([
-        api.get('/news'),
-        api.get('/users/basic')
-      ]);
+      const params = { page, pageSize: PAGE_SIZE };
+      if (filter === 'pending') params.filter = 'pending';
+      if (searchTerm) params.search = searchTerm;
+      if (dateRange.start) params.startDate = dateRange.start;
+      if (dateRange.end) params.endDate = dateRange.end;
 
-      // Chuẩn hóa dữ liệu từ SQL Server (recordset)
-      let allData = Array.isArray(postsRes.data) ? postsRes.data : (postsRes.data.recordset || []);
-
-      // Lọc theo tab Trạng thái (Pending / All)
-      if (filter === 'pending') {
-        const pending = allData.filter(p => {
-          const s = p.StatusID !== undefined ? p.StatusID : p.statusID;
-          return s === 1 || s === 0;
-        });
-        setPosts(pending);
-      } else {
-        setPosts(allData);
-      }
-
+      const res = await api.get('/news', { params });
+      setPosts(res.data.posts || []);
+      setTotal(res.data.total || 0);
+      setTotalPages(res.data.totalPages || 1);
     } catch (err) {
       console.error("Lỗi khi fetch dữ liệu:", err);
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [page, filter, searchTerm, dateRange.start, dateRange.end]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  // --- LOGIC LỌC NÂNG CAO (ĐÃ ĐƯỢC TÍCH HỢP TÌM KIẾM TRONG NỘI DUNG PHÂN CẢNH) ---
-  const filteredPosts = posts.filter(p => {
-    const titleMatch = (p.Title || p.title || "").toLowerCase().includes(searchTerm.toLowerCase());
-    const authorName = p.AuthorName || p.FullName || p.fullName || "";
-    const authorMatch = authorName.toLowerCase().includes(searchTerm.toLowerCase());
-
-    // Tìm kiếm thông minh: Cho phép người dùng gõ tìm từ khóa nằm trong nội dung chi tiết
-    let contentMatch = false;
-    try {
-      // Nếu là kịch bản phân cảnh cấu trúc JSON mới
-      const parsed = JSON.parse(p.Content || p.content);
-      contentMatch = (parsed.noiDung || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-                     (parsed.sapo || "").toLowerCase().includes(searchTerm.toLowerCase());
-    } catch (e) {
-      // Nếu là văn bản thô/HTML định dạng cũ
-      contentMatch = (p.Content || p.content || "").toLowerCase().includes(searchTerm.toLowerCase());
-    }
-
-    // Xử lý bộ lọc ngày tháng phát hành bài viết
-    const postDate = new Date(p.CreatedAt || p.createdAt);
-    let dateMatch = true;
-
-    if (dateRange.start) {
-      const startDate = new Date(dateRange.start);
-      startDate.setHours(0, 0, 0, 0);
-      dateMatch = dateMatch && postDate >= startDate;
-    }
-    if (dateRange.end) {
-      const endDate = new Date(dateRange.end);
-      endDate.setHours(23, 59, 59, 999);
-      dateMatch = dateMatch && postDate <= endDate;
-    }
-
-    return (titleMatch || authorMatch || contentMatch) && dateMatch;
-  });
 
   // Thao tác sửa đổi trạng thái bài viết
   const handleApprove = async (postId) => {
@@ -163,7 +138,8 @@ const NewsList = () => {
           <input
             placeholder="Tìm tiêu đề, tác giả hoặc nội dung kịch bản..."
             style={{ padding: '9px 12px 9px 36px', width: '100%', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: '14px', boxSizing: 'border-box' }}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
         <div style={{ display: 'flex', gap: '6px', flex: '1 1 300px', alignItems: 'center' }}>
@@ -195,8 +171,8 @@ const NewsList = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredPosts.length > 0 ? (
-              filteredPosts.map(item => {
+            {posts.length > 0 ? (
+              posts.map(item => {
                 const pID = item.PostID || item.postID;
                 const pTitle = item.Title || item.title || "Không tiêu đề";
                 const pStatus = item.StatusID !== undefined ? item.StatusID : item.statusID;
@@ -245,6 +221,29 @@ const NewsList = () => {
           </tbody>
         </table>
       </div>
+
+      {/* PHÂN TRANG */}
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 14, marginTop: 16 }}>
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            style={{ ...actionBtnStyle('var(--surface-2)', 'var(--text)'), opacity: page <= 1 ? 0.5 : 1, cursor: page <= 1 ? 'not-allowed' : 'pointer' }}
+          >
+            <IconChevronLeft size={13} />Trước
+          </button>
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            Trang {page}/{totalPages} · {total} bài
+          </span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            style={{ ...actionBtnStyle('var(--surface-2)', 'var(--text)'), opacity: page >= totalPages ? 0.5 : 1, cursor: page >= totalPages ? 'not-allowed' : 'pointer' }}
+          >
+            Sau<IconChevronRight size={13} />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

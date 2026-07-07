@@ -7,27 +7,79 @@ const { sendPushToRoles, sendPushToUser } = require('../routes/pushRoutes');
 const { logError } = require('../utils/errorLogger');
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. Lấy danh sách tin
+// 1. Lấy danh sách tin — có phân trang + tìm kiếm + lọc ngày ở server, tránh
+// kéo toàn bộ bảng Posts về mỗi lần tải trang (sẽ chậm dần khi dữ liệu lớn lên).
+// Không truyền page/pageSize thì vẫn trả nguyên danh sách như cũ (tương thích
+// ngược cho client cũ/script khác đang gọi endpoint này).
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getAllNews = async (req, res) => {
     try {
         const pool     = await poolPromise;
         const userRole = (req.user.Role || req.user.role || '').toLowerCase();
         const userID   = req.user.UserID;
-        let query = '';
+
+        const { page, pageSize, search, filter, startDate, endDate } = req.query;
+        const paginate = page !== undefined || pageSize !== undefined;
+        const pageNum  = Math.max(1, parseInt(page, 10) || 1);
+        const sizeNum  = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 20));
+
         let request = pool.request();
+        const where = [];
 
         if (['admin', 'người duyệt', 'trưởng ban'].includes(userRole)) {
-            query = `SELECT p.*, u.FullName as AuthorName FROM dbo.Posts p LEFT JOIN dbo.Users u ON p.AuthorID = u.UserID ORDER BY p.CreatedAt DESC`;
+            // không lọc gì thêm — thấy toàn bộ
         } else if (userRole === 'thư ký') {
-            query = `SELECT p.*, u.FullName as AuthorName FROM dbo.Posts p LEFT JOIN dbo.Users u ON p.AuthorID = u.UserID WHERE p.StatusID = 2 ORDER BY p.CreatedAt DESC`;
+            where.push('p.StatusID = 2');
         } else {
-            query = `SELECT p.*, u.FullName as AuthorName FROM dbo.Posts p LEFT JOIN dbo.Users u ON p.AuthorID = u.UserID WHERE p.AuthorID = @UserID ORDER BY p.CreatedAt DESC`;
+            where.push('p.AuthorID = @UserID');
             request.input('UserID', userID);
         }
 
-        const result = await request.query(query);
-        res.json(result.recordset || []);
+        if (filter === 'pending') {
+            where.push('(p.StatusID = 1 OR p.StatusID = 0)');
+        }
+        if (search) {
+            where.push('(p.Title LIKE @Search OR u.FullName LIKE @Search OR p.Content LIKE @Search)');
+            request.input('Search', `%${search}%`);
+        }
+        if (startDate) {
+            where.push('p.CreatedAt >= @StartDate');
+            request.input('StartDate', startDate);
+        }
+        if (endDate) {
+            where.push('p.CreatedAt <= @EndDate');
+            request.input('EndDate', endDate);
+        }
+
+        const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+        if (!paginate) {
+            const result = await request.query(`
+                SELECT p.*, u.FullName as AuthorName FROM dbo.Posts p
+                LEFT JOIN dbo.Users u ON p.AuthorID = u.UserID
+                ${whereSql}
+                ORDER BY p.CreatedAt DESC
+            `);
+            return res.json(result.recordset || []);
+        }
+
+        request.input('Offset', (pageNum - 1) * sizeNum);
+        request.input('PageSize', sizeNum);
+
+        const result = await request.query(`
+            SELECT p.*, u.FullName as AuthorName, COUNT(*) OVER() AS TotalCount
+            FROM dbo.Posts p
+            LEFT JOIN dbo.Users u ON p.AuthorID = u.UserID
+            ${whereSql}
+            ORDER BY p.CreatedAt DESC
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY
+        `);
+
+        const rows  = result.recordset || [];
+        const total = rows.length ? rows[0].TotalCount : 0;
+        rows.forEach(r => delete r.TotalCount);
+
+        res.json({ posts: rows, total, page: pageNum, pageSize: sizeNum, totalPages: Math.ceil(total / sizeNum) });
     } catch (err) {
         logError({ source: 'newsController.getAllNews', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: err.message });

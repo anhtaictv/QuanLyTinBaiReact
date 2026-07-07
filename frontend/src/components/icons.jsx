@@ -58,3 +58,5 @@ export const IconTrendingUp = (p) => <Base {...p}><path d="M3 17l6-6 4 4 8-8"/><
 export const IconServer = (p) => <Base {...p}><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></Base>;
 export const IconDatabase = (p) => <Base {...p}><ellipse cx="12" cy="5.5" rx="8" ry="2.8"/><path d="M4 5.5V12c0 1.5 3.6 2.8 8 2.8s8-1.3 8-2.8V5.5"/><path d="M4 12v6.5c0 1.5 3.6 2.8 8 2.8s8-1.3 8-2.8V12"/></Base>;
 export const IconMoreVertical = (p) => <Base {...p} fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></Base>;
+export const IconChevronLeft = (p) => <Base {...p}><path d="M15 18l-6-6 6-6"/></Base>;
+export const IconChevronRight = (p) => <Base {...p}><path d="M9 18l6-6-6-6"/></Base>;
