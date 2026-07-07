@@ -50,13 +50,52 @@ oauth2Client.on('tokens', (tokens) => {
     console.log('✅ [Drive] Token đã được tự động refresh và lưu vào google-token.json');
   } catch (e) {
     console.warn('⚠️ [Drive] Không thể lưu token:', e.message);
+    logError({ source: 'driveRoutes.tokenSave', message: 'Không thể lưu token Drive mới sau khi refresh: ' + e.message, stack: e.stack });
   }
 });
 
 loadToken();
 const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
+// ── HEALTH CHECK – phát hiện sớm khi refresh token bị thu hồi/hết hạn ─────────
+// oauth2Client tự refresh access token âm thầm; nếu refresh token bên dưới bị
+// thu hồi hoặc hết hạn (Google Cloud OAuth ở chế độ Testing tự hết hạn sau 7
+// ngày), lỗi chỉ lộ ra khi có người dùng thật bấm "đưa qua Google Docs" — lúc
+// đó CTV/biên tập đang giữa quy trình duyệt bài mới biết. Kiểm tra định kỳ để
+// Admin thấy cảnh báo qua ErrorBell trước khi có ai bị chặn giữa chừng.
+let driveWasHealthy = true;
+
+async function checkDriveHealth() {
+  try {
+    await drive.about.get({ fields: 'user' });
+    driveWasHealthy = true;
+  } catch (err) {
+    if (driveWasHealthy) {
+      console.error('❌ [Drive] Health check thất bại — token có thể đã hết hạn/bị thu hồi:', err.message);
+      logError({
+        source:  'driveRoutes.healthCheck',
+        message: 'Google Drive token đã hết hạn hoặc bị thu hồi — cần đăng nhập lại để cấp quyền mới! Chi tiết: ' + err.message,
+        stack:   err.stack
+      });
+    }
+    driveWasHealthy = false;
+  }
+}
+
+setTimeout(checkDriveHealth, 10_000);
+setInterval(checkDriveHealth, 6 * 60 * 60 * 1000);
+
 // ── HELPER ────────────────────────────────────────────────────────────────────
+
+// Nhận diện lỗi do token Drive hết hạn/bị thu hồi (khác các lỗi khác như file
+// không tồn tại, mất mạng...) để trả thông báo dễ hiểu, đúng hướng xử lý.
+function friendlyDriveError(err) {
+  const code   = err.response?.data?.error || err.code;
+  const isAuth = code === 'invalid_grant' || code === 401 || err.message?.includes('invalid_grant');
+  return isAuth
+    ? 'Google Drive token đã hết hạn hoặc bị thu hồi — cần Admin đăng nhập lại để cấp quyền mới! (' + err.message + ')'
+    : err.message;
+}
 
 function resolveLocalPath(storedPath) {
   const cleaned  = storedPath.replace(/^Storage\//, '');
@@ -115,9 +154,10 @@ router.post('/upload', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('❌ [Drive] Upload lỗi:', err.message);
-    logError({ source: 'driveRoutes.upload', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-    res.status(500).json({ error: 'Lỗi upload Google Drive: ' + err.message });
+    const friendly = friendlyDriveError(err);
+    console.error('❌ [Drive] Upload lỗi:', friendly);
+    logError({ source: 'driveRoutes.upload', message: friendly, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+    res.status(500).json({ error: 'Lỗi upload Google Drive: ' + friendly });
   }
 });
 
@@ -200,9 +240,10 @@ router.post('/complete/:driveFileId', async (req, res) => {
     res.json({ success: true, storagePath, message: 'Đã lưu file về VPS và duyệt bài thành công!' });
 
   } catch (err) {
-    console.error('❌ [Drive] Complete lỗi:', err.message);
-    logError({ source: 'driveRoutes.complete', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-    res.status(500).json({ error: 'Lỗi khi export file từ Drive: ' + err.message });
+    const friendly = friendlyDriveError(err);
+    console.error('❌ [Drive] Complete lỗi:', friendly);
+    logError({ source: 'driveRoutes.complete', message: friendly, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+    res.status(500).json({ error: 'Lỗi khi export file từ Drive: ' + friendly });
   }
 });
 
