@@ -11,7 +11,7 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 export function usePushNotification() {
-  const [permission,  setPermission]  = useState(Notification.permission);
+  const [permission,  setPermission]  = useState(('Notification' in window) ? Notification.permission : 'default');
   const [subscribed,  setSubscribed]  = useState(false);
   const [loading,     setLoading]     = useState(false);
 
@@ -30,7 +30,7 @@ export function usePushNotification() {
   };
 
   const subscribe = async () => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
       alert('Trình duyệt này không hỗ trợ Push Notification!');
       return;
     }

@@ -41,7 +41,7 @@ const MainLayout = () => {
 
   // ── Tự động hỏi xin quyền sau 3 giây ─────────────────────────────────────
   useEffect(() => {
-    if (Notification.permission === 'default') {
+    if ('Notification' in window && Notification.permission === 'default') {
       const timer = setTimeout(() => {
         handleSubscribe();
       }, 3000);
@@ -59,7 +59,7 @@ const MainLayout = () => {
   };
 
   const handleSubscribe = async () => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
     setNotifLoading(true);
     try {
       // 1. Xin quyền
@@ -160,12 +160,14 @@ const MainLayout = () => {
 
   // ── Nút bật/tắt thông báo ─────────────────────────────────────────────────
   const NotifBtn = () => {
-    const denied = Notification.permission === 'denied';
+    const notifSupported = 'Notification' in window;
+    const denied = notifSupported && Notification.permission === 'denied';
     return (
       <button
         onClick={subscribed ? handleUnsubscribe : handleSubscribe}
-        disabled={notifLoading || denied}
+        disabled={notifLoading || denied || !notifSupported}
         title={
+          !notifSupported ? 'Trình duyệt này không hỗ trợ thông báo đẩy' :
           denied      ? 'Thông báo bị chặn – vào cài đặt trình duyệt để bật' :
           subscribed  ? 'Tắt thông báo' : 'Bật thông báo'
         }
@@ -173,8 +175,8 @@ const MainLayout = () => {
         style={{
           ...chipStyle,
           background: subscribed ? 'var(--sidebar-active)' : chipStyle.background,
-          cursor:     notifLoading || denied ? 'not-allowed' : 'pointer',
-          opacity:    denied ? 0.5 : 1,
+          cursor:     notifLoading || denied || !notifSupported ? 'not-allowed' : 'pointer',
+          opacity:    denied || !notifSupported ? 0.5 : 1,
         }}
       >
         {notifLoading ? <IconRefresh size={16} /> : subscribed ? <IconBell size={16} /> : <IconBellOff size={16} />}
@@ -202,14 +204,16 @@ const MainLayout = () => {
         marginBottom: 14, padding: '8px 10px',
         background:   'rgba(0,0,0,0.18)', borderRadius: 'var(--radius-sm)',
         fontSize:     11.5, lineHeight: 1.5,
-        color: Notification.permission === 'denied' ? '#E0A08F'
+        color: ('Notification' in window && Notification.permission === 'denied') ? '#E0A08F'
              : subscribed ? '#8FCBA8' : 'var(--sidebar-fg-muted)'
       }}>
-        {Notification.permission === 'denied'
-          ? 'Thông báo bị chặn – vào cài đặt trình duyệt để bật'
-          : subscribed
-            ? 'Thông báo đang bật'
-            : 'Chưa bật thông báo đẩy'}
+        {!('Notification' in window)
+          ? 'Trình duyệt này không hỗ trợ thông báo đẩy'
+          : Notification.permission === 'denied'
+            ? 'Thông báo bị chặn – vào cài đặt trình duyệt để bật'
+            : subscribed
+              ? 'Thông báo đang bật'
+              : 'Chưa bật thông báo đẩy'}
       </div>
 
       {/* Menu */}
