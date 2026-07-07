@@ -6,7 +6,7 @@ import { IconSettings, IconFileText, IconMoreVertical } from '../icons';
 import { showToastError } from '../../utils/Toast';
 import LoadingState from '../LoadingState';
 
-const BASE_URL = process.env.REACT_APP_API_URL || '/api';
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Giới hạn số tin nhắn giữ trong bộ nhớ trình duyệt khi hội thoại mở lâu và liên tục
 // nhận tin nhắn mới qua socket — cắt bớt phần cũ nhất, có thể tải lại qua phân trang.

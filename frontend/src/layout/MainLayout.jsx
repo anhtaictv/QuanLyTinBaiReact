@@ -32,7 +32,7 @@ const MainLayout = () => {
   const userRole = (userObj?.role || userObj?.Role || '').toLowerCase();
   const isAdminLevel = ['admin', 'trưởng ban'].includes(userRole);
   const isAdminStrict = userRole === 'admin';
-  const BASE_URL = process.env.REACT_APP_API_URL || '/api';
+  const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
   // ── Kiểm tra đã subscribe chưa khi mount ──────────────────────────────────
   useEffect(() => {
