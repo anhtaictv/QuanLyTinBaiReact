@@ -3,7 +3,7 @@
 A full-stack editorial workflow system for newsrooms: contributors submit articles with an attached Word document, editors and department heads review/approve them, and approved files can be round-tripped through Google Docs for collaborative editing before being archived back to storage.
 
 - **Backend**: Node.js + Express REST API, MSSQL (SQL Server)
-- **Frontend**: React 18 SPA (Create React App)
+- **Frontend**: React 18 SPA (Vite)
 
 > 🇻🇳 Vietnamese version: [README.vi.md](./README.vi.md)
 
@@ -106,11 +106,12 @@ Never commit `.env`, `service-account.json`, `oauth-credentials.json`, or `googl
 ```bash
 cd backend/frontend
 npm install
-npm start    # dev server
-npm run build
+npm run dev      # dev server (Vite, port 3000, proxies /api and /socket.io to :5001)
+npm run build    # production build into build/
+npm run preview  # preview the production build
 ```
 
-Set `REACT_APP_API_URL` (e.g. in `.env.production`) to point the SPA at your deployed API.
+Set `VITE_API_URL` (e.g. in `.env.production`) to point the SPA at your deployed API. Default (unset) is `/api`, same-origin — matches setups with a reverse proxy (IIS URL Rewrite) in front.
 
 ### Database
 

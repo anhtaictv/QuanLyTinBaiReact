@@ -3,7 +3,7 @@
 Hệ thống quản lý quy trình biên tập cho tòa soạn: cộng tác viên (CTV) gửi bài kèm file Word, người duyệt/trưởng ban xét duyệt, bài được duyệt có thể đưa qua Google Docs để chỉnh sửa cộng tác trước khi lưu lại vào hệ thống.
 
 - **Backend**: Node.js + Express REST API, MSSQL (SQL Server)
-- **Frontend**: React 18 SPA (Create React App)
+- **Frontend**: React 18 SPA (Vite)
 
 > 🇬🇧 Bản tiếng Anh: [README.md](./README.md)
 
@@ -106,11 +106,12 @@ Không commit `.env`, `service-account.json`, `oauth-credentials.json`, `google-
 ```bash
 cd backend/frontend
 npm install
-npm start    # chạy dev server
-npm run build
+npm run dev      # chạy dev server (Vite, port 3000, proxy /api và /socket.io sang :5001)
+npm run build    # build production vào thư mục build/
+npm run preview  # xem thử bản build đã production
 ```
 
-Đặt `REACT_APP_API_URL` (ví dụ trong `.env.production`) để SPA gọi đúng API đã deploy.
+Đặt `VITE_API_URL` (ví dụ trong `.env.production`) để SPA gọi đúng API đã deploy. Mặc định (không set) là `/api`, dùng chung origin — phù hợp khi có reverse proxy (IIS URL Rewrite) đứng trước.
 
 ### Database
 

@@ -5,7 +5,7 @@ let socketSingleton = null;
 
 function createSocket() {
   const token = localStorage.getItem('token');
-  const apiUrl = process.env.REACT_APP_API_URL || '/api';
+  const apiUrl = import.meta.env.VITE_API_URL || '/api';
   const base = /^https?:\/\//.test(apiUrl)
     ? apiUrl.replace(/\/api\/?$/, '')
     : window.location.origin;
