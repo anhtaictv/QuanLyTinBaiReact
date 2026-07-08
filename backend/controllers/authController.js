@@ -176,3 +176,18 @@ exports.changePassword = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
+
+// ================= REFRESH TOKEN =================
+// Cấp token mới với hạn 24h mới, miễn là token hiện tại còn hạn (verifyToken đã chặn
+// token hết hạn trước khi vào đây). Cho phép session của người đang thao tác tích cực
+// (frontend tự gọi định kỳ) không bị văng ra giữa chừng khi token 24h cũ sắp hết hạn —
+// không cần cơ chế refresh-token riêng phức tạp. Người dùng idle vẫn bị đăng xuất bởi
+// useIdleLogout ở frontend (10 phút không thao tác) như trước giờ.
+exports.refreshToken = async (req, res) => {
+    const token = jwt.sign(
+        { UserID: req.user.UserID, Role: req.user.Role },
+        SECRET_KEY,
+        { expiresIn: '24h' }
+    );
+    res.json({ success: true, token });
+};

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import useIdleLogout from '../hooks/useIdleLogout';
+import useSessionRefresh from '../hooks/useSessionRefresh';
 import ErrorBell from '../components/ErrorBell';
 import ChatBell from '../components/ChatBell';
 import { disconnectChatSocket } from '../hooks/useChatSocket';
@@ -131,6 +132,7 @@ const MainLayout = () => {
   };
 
   useIdleLogout(IDLE_TIMEOUT_MS, handleLogout);
+  useSessionRefresh();
 
   const handleRefresh = () => window.location.reload();
 
