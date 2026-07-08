@@ -1,7 +1,9 @@
 const { poolPromise } = require('../config/db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { logError } = require('../utils/errorLogger');
+const { sendResetPasswordEmail } = require('../utils/mailer');
 
 const SECRET_KEY = process.env.JWT_SECRET;
 
@@ -34,8 +36,8 @@ function clearFailedLogins(username) {
 }
 
 // ================= REGISTER =================
-exports.register = async (req, res) => { 
-    const { Username, Password, FullName, Age, Department } = req.body;
+exports.register = async (req, res) => {
+    const { Username, Password, FullName, Age, Department, Email } = req.body;
 
     try {
         const pool = await poolPromise;
@@ -61,10 +63,11 @@ exports.register = async (req, res) => {
             .input('fn', FullName)
             .input('age', ageValue)
             .input('dept', Department || null)
+            .input('email', Email || null)
             .query(`
-                INSERT INTO dbo.Users 
-                (Username, PasswordHash, FullName, RoleID, Role, Age, Department) 
-                VALUES (@u, @hp, @fn, 1, 'CTV', @age, @dept)
+                INSERT INTO dbo.Users
+                (Username, PasswordHash, FullName, RoleID, Role, Age, Department, Email)
+                VALUES (@u, @hp, @fn, 1, 'CTV', @age, @dept, @email)
             `);
 
         res.json({ success: true, message: 'Đăng ký thành công!' }); 
@@ -97,7 +100,7 @@ exports.login = async (req, res) => {
         const result = await pool.request()
             .input('u', Username)
             .query(`
-                SELECT UserID, FullName, Username, PasswordHash, Role
+                SELECT UserID, FullName, Username, PasswordHash, Role, Email
                 FROM dbo.Users
                 WHERE Username = @u
             `);
@@ -177,6 +180,38 @@ exports.changePassword = async (req, res) => {
     }
 };
 
+// ================= EMAIL (dùng cho "Quên mật khẩu") =================
+// Users tạo trước khi có tính năng này chưa có Email — cho phép tự cập nhật ở trang
+// Đổi mật khẩu, không cần đợi Admin. Bắt buộc phải có Email mới dùng được luồng quên
+// mật khẩu (forgotPassword chỉ khớp khi cả Username lẫn Email đều đúng).
+exports.getMyEmail = async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('uid', req.user.UserID)
+            .query('SELECT Email FROM dbo.Users WHERE UserID = @uid');
+        res.json({ success: true, email: result.recordset[0]?.Email || '' });
+    } catch (err) {
+        logError({ source: 'authController.getMyEmail', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+exports.updateMyEmail = async (req, res) => {
+    const { Email } = req.body;
+    try {
+        const pool = await poolPromise;
+        await pool.request()
+            .input('uid', req.user.UserID)
+            .input('email', Email)
+            .query('UPDATE dbo.Users SET Email = @email WHERE UserID = @uid');
+        res.json({ success: true, message: 'Cập nhật email thành công!' });
+    } catch (err) {
+        logError({ source: 'authController.updateMyEmail', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
 // ================= REFRESH TOKEN =================
 // Cấp token mới với hạn 24h mới, miễn là token hiện tại còn hạn (verifyToken đã chặn
 // token hết hạn trước khi vào đây). Cho phép session của người đang thao tác tích cực
@@ -190,4 +225,108 @@ exports.refreshToken = async (req, res) => {
         { expiresIn: '24h' }
     );
     res.json({ success: true, token });
+};
+
+// ================= QUÊN MẬT KHẨU =================
+const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 phút
+
+function hashToken(token) {
+    return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+// Luôn trả cùng 1 thông báo chung dù tài khoản/email có khớp hay không — tránh lộ
+// thông tin "tài khoản này có tồn tại không" cho kẻ dò quét (user enumeration).
+const GENERIC_MESSAGE = 'Nếu thông tin khớp với 1 tài khoản đã có email, link đặt lại mật khẩu đã được gửi tới email đó.';
+
+exports.forgotPassword = async (req, res) => {
+    const { Username, Email } = req.body;
+
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('u', Username)
+            .input('email', Email)
+            .query(`
+                SELECT UserID, Email FROM dbo.Users
+                WHERE Username = @u AND Email IS NOT NULL AND LOWER(Email) = LOWER(@email)
+            `);
+
+        const user = result.recordset[0];
+
+        // Không khớp -> vẫn trả 200 thông báo chung, không tiết lộ lý do cụ thể.
+        if (!user) {
+            return res.json({ success: true, message: GENERIC_MESSAGE });
+        }
+
+        const rawToken = crypto.randomBytes(32).toString('hex');
+        const tokenHash = hashToken(rawToken);
+        const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+        await pool.request()
+            .input('uid', user.UserID)
+            .input('hash', tokenHash)
+            .input('exp', expiresAt)
+            .query(`
+                INSERT INTO dbo.PasswordResetTokens (UserID, TokenHash, ExpiresAt)
+                VALUES (@uid, @hash, @exp)
+            `);
+
+        const frontendUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+        const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
+
+        try {
+            await sendResetPasswordEmail(user.Email, resetUrl);
+        } catch (mailErr) {
+            // Lỗi gửi mail không được lộ ra cho client (vẫn trả thông báo chung) — chỉ
+            // ghi log để Admin biết qua ErrorBell/Telegram (vd SMTP cấu hình sai).
+            logError({ source: 'authController.forgotPassword.sendMail', message: mailErr.message, stack: mailErr.stack });
+        }
+
+        res.json({ success: true, message: GENERIC_MESSAGE });
+
+    } catch (err) {
+        logError({ source: 'authController.forgotPassword', message: err.message, stack: err.stack, method: req.method, path: req.originalUrl });
+        res.status(500).json({ success: false, message: 'Lỗi server' });
+    }
+};
+
+exports.resetPassword = async (req, res) => {
+    const { token, newPassword } = req.body;
+
+    try {
+        const pool = await poolPromise;
+        const tokenHash = hashToken(token);
+
+        // ExpiresAt được ghi từ Node (new Date(...), luôn là UTC) nên phải so sánh với
+        // GETUTCDATE() chứ không phải GETDATE() (giờ local server, UTC+7) — nếu dùng
+        // GETDATE() thì mọi token bị coi là hết hạn ngay lúc tạo ra (lệch 7 tiếng).
+        const result = await pool.request()
+            .input('hash', tokenHash)
+            .query(`
+                SELECT ResetID, UserID FROM dbo.PasswordResetTokens
+                WHERE TokenHash = @hash AND Used = 0 AND ExpiresAt > GETUTCDATE()
+            `);
+
+        const resetRow = result.recordset[0];
+        if (!resetRow) {
+            return res.status(400).json({ success: false, message: 'Link đặt lại mật khẩu không hợp lệ hoặc đã hết hạn!' });
+        }
+
+        const hashedNew = await bcrypt.hash(newPassword, 10);
+
+        await pool.request()
+            .input('uid', resetRow.UserID)
+            .input('hp', hashedNew)
+            .query('UPDATE dbo.Users SET PasswordHash = @hp WHERE UserID = @uid');
+
+        await pool.request()
+            .input('id', resetRow.ResetID)
+            .query('UPDATE dbo.PasswordResetTokens SET Used = 1 WHERE ResetID = @id');
+
+        res.json({ success: true, message: 'Đặt lại mật khẩu thành công! Bạn có thể đăng nhập bằng mật khẩu mới.' });
+
+    } catch (err) {
+        logError({ source: 'authController.resetPassword', message: err.message, stack: err.stack, method: req.method, path: req.originalUrl });
+        res.status(500).json({ success: false, message: 'Lỗi server' });
+    }
 };

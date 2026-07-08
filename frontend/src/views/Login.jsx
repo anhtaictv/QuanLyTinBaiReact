@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import api from '../services/api';
 import { IconEye, IconEyeOff, IconAlertCircle, IconCheckCircle } from '../components/icons';
 
@@ -11,7 +11,8 @@ const Login = () => {
     password: '',
     fullName: '',
     age: '',
-    department: ''
+    department: '',
+    email: ''
   });
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -37,7 +38,8 @@ const Login = () => {
           Password: formData.password,
           FullName: formData.fullName,
           Age: formData.age ? parseInt(formData.age) : null,
-          Department: formData.department
+          Department: formData.department,
+          Email: formData.email
         });
 
         setSuccessMessage('Đăng ký thành công! Xin mời đăng nhập.');
@@ -121,6 +123,10 @@ const Login = () => {
               <label style={labelStyle}>Tuổi</label>
               <input name="age" type="number" placeholder="25" value={formData.age} onChange={handleChange} style={inputStyle} />
             </div>
+            <div style={{ marginBottom: 15 }}>
+              <label style={labelStyle}>Email (để lấy lại mật khẩu khi quên)</label>
+              <input name="email" type="email" autoComplete="email" placeholder="ten@gmail.com" value={formData.email} onChange={handleChange} style={inputStyle} />
+            </div>
           </>
         )}
 
@@ -147,6 +153,11 @@ const Login = () => {
               {showPassword ? <IconEyeOff size={17} /> : <IconEye size={17} />}
             </button>
           </div>
+          {!isRegister && (
+            <Link to="/forgot-password" style={{ display: 'inline-block', marginTop: 8, fontSize: 12.5, color: 'var(--accent)', textDecoration: 'none' }}>
+              Quên mật khẩu?
+            </Link>
+          )}
         </div>
 
         <button
