@@ -8,7 +8,7 @@ import { disconnectChatSocket } from '../hooks/useChatSocket';
 import { ThemeContext } from '../context/ThemeContext';
 import {
   IconGrid, IconList, IconPlus, IconChat, IconKey, IconUsers, IconLogout,
-  IconRefresh, IconBell, IconBellOff, IconMenu, IconX, IconSun, IconMoon
+  IconRefresh, IconBell, IconBellOff, IconMenu, IconX, IconSun, IconMoon, IconMail
 } from '../components/icons';
 
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 phút không hoạt động thì tự đăng xuất
@@ -34,6 +34,18 @@ const MainLayout = () => {
   const isAdminLevel = ['admin', 'trưởng ban'].includes(userRole);
   const isAdminStrict = userRole === 'admin';
   const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
+  // Tài khoản tạo trước khi có tính năng "Quên mật khẩu" chưa có Email — nhắc liên tục
+  // (không chặn thao tác, chỉ hiển thị banner) tới khi họ tự bổ sung ở trang Đổi mật khẩu.
+  const [hasEmail, setHasEmail] = useState(!!(userObj?.Email || userObj?.email));
+  useEffect(() => {
+    const onEmailUpdated = () => {
+      const u = JSON.parse(localStorage.getItem('user') || '{}');
+      setHasEmail(!!(u.Email || u.email));
+    };
+    window.addEventListener('user-email-updated', onEmailUpdated);
+    return () => window.removeEventListener('user-email-updated', onEmailUpdated);
+  }, []);
 
   // ── Kiểm tra đã subscribe chưa khi mount ──────────────────────────────────
   useEffect(() => {
@@ -319,6 +331,24 @@ const MainLayout = () => {
           <div style={{ fontSize: 14 }}>Xin chào, <strong style={{ color: 'var(--accent)' }}>{userObj?.fullName || userObj?.FullName}</strong></div>
           <span style={{ fontSize: '12px', background: 'var(--accent-soft)', color: 'var(--accent)', padding: '4px 10px', borderRadius: '999px', fontWeight: 600 }}>{userObj?.role || userObj?.Role}</span>
         </div>
+
+        {!hasEmail && location.pathname !== '/change-password' && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+            background: 'var(--warning-soft)', border: '1px solid var(--warning)', color: 'var(--warning)',
+            padding: '11px 16px', borderRadius: 'var(--radius-md)', marginBottom: 20, fontSize: 13.5
+          }}>
+            <IconMail size={16} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>Bạn chưa có email khôi phục mật khẩu — nếu quên mật khẩu sẽ không tự lấy lại được.</span>
+            <button
+              onClick={() => navigate('/change-password')}
+              style={{ background: 'var(--warning)', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 'var(--radius-sm)', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}
+            >
+              Cập nhật ngay
+            </button>
+          </div>
+        )}
+
         <Outlet />
       </div>
     </div>

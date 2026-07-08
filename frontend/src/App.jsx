@@ -1,6 +1,8 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import Login from './views/Login';
+import ForgotPassword from './views/ForgotPassword';
+import ResetPassword from './views/ResetPassword';
 import MainLayout from './layout/MainLayout';
 import LoadingState from './components/LoadingState';
 
@@ -44,6 +46,8 @@ function App() {
         <Routes>
           {/* Route Đăng nhập - Đứng độc lập không có Sidebar */}
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* CẤP ĐỘ 1: Bắt buộc phải đăng nhập (Có Token) */}
           <Route element={<ProtectedRoute />}>

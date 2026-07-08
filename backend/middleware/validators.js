@@ -19,6 +19,7 @@ const registerRules = [
     body('FullName').trim().isLength({ min: 2, max: 100 }).withMessage('Họ tên phải từ 2-100 ký tự!'),
     body('Age').optional({ values: 'falsy' }).isInt({ min: 16, max: 100 }).withMessage('Tuổi không hợp lệ!'),
     body('Department').optional({ values: 'falsy' }).trim().isLength({ max: 100 }).withMessage('Tên đơn vị quá dài!'),
+    body('Email').optional({ values: 'falsy' }).trim().isEmail().withMessage('Email không hợp lệ!').normalizeEmail(),
 ];
 
 const loginRules = [
@@ -31,8 +32,25 @@ const changePasswordRules = [
     body('NewPassword').isLength({ min: 6 }).withMessage('Mật khẩu mới phải từ 6 ký tự trở lên!'),
 ];
 
+const updateEmailRules = [
+    body('Email').trim().isEmail().withMessage('Email không hợp lệ!').normalizeEmail(),
+];
+
+const forgotPasswordRules = [
+    body('Username').trim().notEmpty().withMessage('Vui lòng nhập tên đăng nhập!'),
+    body('Email').trim().isEmail().withMessage('Email không hợp lệ!').normalizeEmail(),
+];
+
+const resetPasswordRules = [
+    body('token').trim().notEmpty().withMessage('Thiếu token đặt lại mật khẩu!'),
+    body('newPassword').isLength({ min: 6 }).withMessage('Mật khẩu mới phải từ 6 ký tự trở lên!'),
+];
+
 const createNewsRules = [
     body('tieuDe').trim().isLength({ min: 1, max: 500 }).withMessage('Vui lòng nhập tiêu đề bài viết!'),
 ];
 
-module.exports = { handleValidation, registerRules, loginRules, changePasswordRules, createNewsRules };
+module.exports = {
+    handleValidation, registerRules, loginRules, changePasswordRules, createNewsRules,
+    updateEmailRules, forgotPasswordRules, resetPasswordRules,
+};

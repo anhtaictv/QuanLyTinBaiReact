@@ -11,7 +11,10 @@ const authController = require('./controllers/authController');
 const newsRoutes = require('./routes/newsRoutes');
 const fileRoutes = require('./routes/fileRoutes');
 const { verifyToken, isAdmin } = require('./middleware/authMiddleware');
-const { handleValidation, registerRules, loginRules, changePasswordRules } = require('./middleware/validators');
+const {
+    handleValidation, registerRules, loginRules, changePasswordRules,
+    updateEmailRules, forgotPasswordRules, resetPasswordRules,
+} = require('./middleware/validators');
 const driveRoutes = require('./routes/driveRoutes'); // ✅ chỉ require ở đây
 const pushRoutes = require('./routes/pushRoutes');
 const errorLogRoutes = require('./routes/errorLogRoutes');
@@ -113,6 +116,10 @@ app.post('/api/login', authBurstLimiter, authLimiter, loginRules, handleValidati
 app.post('/api/register', authBurstLimiter, authLimiter, registerRules, handleValidation, authController.register);
 app.post('/api/change-password', verifyToken, changePasswordRules, handleValidation, authController.changePassword);
 app.post('/api/refresh-token', verifyToken, authController.refreshToken);
+app.get('/api/profile/email', verifyToken, authController.getMyEmail);
+app.put('/api/profile/email', verifyToken, updateEmailRules, handleValidation, authController.updateMyEmail);
+app.post('/api/forgot-password', authBurstLimiter, authLimiter, forgotPasswordRules, handleValidation, authController.forgotPassword);
+app.post('/api/reset-password', authBurstLimiter, authLimiter, resetPasswordRules, handleValidation, authController.resetPassword);
 
 // --- ROUTE BẢO VỆ ---
 app.use('/api/news', verifyToken, newsRoutes);
