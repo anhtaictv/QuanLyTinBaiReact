@@ -112,6 +112,7 @@ app.use('/api', apiLimiter);
 app.post('/api/login', authBurstLimiter, authLimiter, loginRules, handleValidation, authController.login);
 app.post('/api/register', authBurstLimiter, authLimiter, registerRules, handleValidation, authController.register);
 app.post('/api/change-password', verifyToken, changePasswordRules, handleValidation, authController.changePassword);
+app.post('/api/refresh-token', verifyToken, authController.refreshToken);
 
 // --- ROUTE BẢO VỆ ---
 app.use('/api/news', verifyToken, newsRoutes);

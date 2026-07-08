@@ -518,12 +518,34 @@ exports.recallMessage = async (req, res) => {
             return res.status(403).json({ error: 'Bạn không thể thu hồi tin nhắn này!' });
         }
 
+        // Thu hồi nghĩa là "không ai còn thấy được nữa" — getMessageWithAttachments() đã ẩn
+        // path khỏi response API sau khi IsRecalled=1, nhưng downloadAttachment() chỉ kiểm tra
+        // quyền thành viên hội thoại, không kiểm tra IsRecalled — nếu path từng lộ ra trước đó
+        // (network tab, cache...) thì vẫn tải được mãi mãi. Xoá thẳng file vật lý + record DB
+        // để đóng luôn đường vòng này, đồng thời dọn rác đĩa cho ChatStorage.
+        const attResult = await pool.request()
+            .input('MessageID', messageId)
+            .query('SELECT StoredPath FROM dbo.MessageAttachments WHERE MessageID = @MessageID');
+        for (const att of attResult.recordset) {
+            const cleaned = att.StoredPath.replace(/^ChatStorage\//, '');
+            const fullPath = path.resolve(STORAGE_ROOT, 'ChatStorage', cleaned);
+            const rootResolved = path.resolve(STORAGE_ROOT, 'ChatStorage');
+            if (fullPath.startsWith(rootResolved)) {
+                fs.unlink(fullPath, (err) => {
+                    if (err && err.code !== 'ENOENT') {
+                        console.warn('⚠️ [Chat] Không xoá được file đính kèm sau khi thu hồi:', fullPath, err.message);
+                    }
+                });
+            }
+        }
+
         await pool.request()
             .input('MessageID', messageId)
             .query(`
+                DELETE FROM dbo.MessageAttachments WHERE MessageID = @MessageID;
                 UPDATE dbo.Messages
                 SET IsRecalled = 1, RecalledAt = GETDATE()
-                WHERE MessageID = @MessageID
+                WHERE MessageID = @MessageID;
             `);
 
         const updatedMessage = await getMessageWithAttachments(pool, messageId);
