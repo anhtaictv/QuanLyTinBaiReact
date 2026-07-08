@@ -61,6 +61,21 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Endpoint công khai cho dịch vụ uptime monitor bên ngoài (UptimeRobot, Better Uptime...) —
+// không qua verifyToken (monitor không đăng nhập được) và đặt trước mọi rate limiter để
+// không bao giờ tự bị chặn nhầm dù ping dồn dập. Check nhanh cả kết nối DB — nếu DB rớt,
+// process Node vẫn sống nhưng app coi như hỏng, cần biết để phân biệt "server đơ" khỏi
+// "chỉ DB đang trục trặc" khi xem cảnh báo bên ngoài.
+app.get('/api/health', async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        await pool.request().query('SELECT 1');
+        res.json({ status: 'ok', db: 'connected', uptime: process.uptime() });
+    } catch (err) {
+        res.status(503).json({ status: 'degraded', db: 'disconnected', uptime: process.uptime() });
+    }
+});
+
 // Chặn brute-force đăng nhập/đăng ký theo IP thật (xem trust proxy ở trên).
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
