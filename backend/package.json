@@ -10,9 +10,9 @@
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
-    "body-parser": "^2.2.2",
+    "body-parser": "^2.3.0",
     "cors": "^2.8.5",
-    "docxtemplater": "^3.68.7",
+    "docxtemplater": "^3.69.0",
     "dotenv": "^16.4.5",
     "express": "^4.22.2",
     "express-rate-limit": "^7.4.1",
