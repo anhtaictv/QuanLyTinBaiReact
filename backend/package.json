@@ -1,6 +1,6 @@
 {
   "name": "quanlytinbai-backend",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Backend cho he thong quan ly tin bai",
   "main": "server.js",
   "scripts": {
