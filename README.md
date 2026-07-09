@@ -78,8 +78,8 @@ frontend/                    # React SPA
 | Người duyệt (Reviewer) | 2 | Approve/reject, editor revision |
 | Trưởng ban (Department Head) | 3 | Approve/reject, lock/unlock |
 | Admin | 4 | Full access, user management, error log |
-| Thư ký (Secretary) | 5 | Approve/reject |
-| Kiểm soát viên (Controller) | 6 | View |
+| Thư ký (Secretary) | 5 | Handles already-approved posts only (archiving/publishing) — cannot see or approve pending posts |
+| Kiểm soát viên (Controller) | 6 | View all posts (any status), no approve/lock/edit |
 
 Role checks are enforced **server-side** (middleware), not just hidden in the UI.
 

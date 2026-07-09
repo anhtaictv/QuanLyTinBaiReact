@@ -171,7 +171,10 @@ app.put('/api/users/:userId/role', verifyToken, isAdmin, async (req, res) => {
             "Thư ký": 5,
             "Kiểm soát viên": 6
         };
-        const roleId = roleIdMap[role] || 1;
+        if (!Object.prototype.hasOwnProperty.call(roleIdMap, role)) {
+            return res.status(400).json({ error: 'Vai trò không hợp lệ!' });
+        }
+        const roleId = roleIdMap[role];
         await pool.request()
             .input('uid', userId)
             .input('r', role)

@@ -61,6 +61,10 @@ const PostDetail = () => {
   // "Thư ký" không có ở đây — họ chỉ xử lý bài đã duyệt, không duyệt/mở Google Docs cho bài chờ duyệt.
   const canEdit     = ['admin', 'người duyệt', 'trưởng ban'].includes(userRole);
   const isCTV       = !canEdit;
+  // Banner "file của bạn" bên dưới chỉ đúng khi người xem chính là tác giả — trước đây
+  // Thư ký cũng rơi vào !canEdit nhưng luôn xem bài của người khác nên không lộ ra;
+  // giờ Thư ký/Kiểm soát viên xem được bài người khác nên phải chốt thêm điều kiện tác giả.
+  const isAuthor    = !!currentUser?.UserID && (post?.AuthorID || post?.authorID) === currentUser.UserID;
   const hasFile     = !!(post?.StoragePath || post?.storagePath);
   const statusID    = post?.StatusID || post?.statusID;
 
@@ -215,7 +219,7 @@ const PostDetail = () => {
       )}
 
       {/* ── THÔNG BÁO CTV KHI ĐÃ DUYỆT ── */}
-      {isCTV && statusID === 2 && hasFile && (
+      {isCTV && isAuthor && statusID === 2 && hasFile && (
         <div style={{ background: 'var(--success-soft)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 16, marginBottom: 20 }}>
           <p style={{ margin: '0 0 8px 0', color: 'var(--success)', fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
             <IconCheckCircle size={14} />Bài viết đã được duyệt và chỉnh sửa!

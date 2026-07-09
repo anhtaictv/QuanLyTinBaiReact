@@ -26,8 +26,10 @@ exports.getAllNews = async (req, res) => {
         let request = pool.request();
         const where = [];
 
-        if (['admin', 'người duyệt', 'trưởng ban'].includes(userRole)) {
-            // không lọc gì thêm — thấy toàn bộ
+        if (['admin', 'người duyệt', 'trưởng ban', 'kiểm soát viên'].includes(userRole)) {
+            // không lọc gì thêm — thấy toàn bộ (Kiểm soát viên chỉ xem, không có quyền
+            // duyệt/khóa/sửa — các quyền đó được chặn riêng ở APPROVE_ROLES/LOCK_ROLES
+            // và canEdit/canApproveOrReject phía frontend)
         } else if (userRole === 'thư ký') {
             where.push('p.StatusID = 2');
         } else {
@@ -163,7 +165,7 @@ exports.getDashboardStats = async (req, res) => {
         const userID   = req.user.UserID;
         let totalPosts, postsToday;
 
-        if (['admin', 'người duyệt', 'trưởng ban', 'thư ký'].includes(userRole)) {
+        if (['admin', 'người duyệt', 'trưởng ban', 'thư ký', 'kiểm soát viên'].includes(userRole)) {
             const result = await pool.request().query(`
                 SELECT
                     (SELECT COUNT(*) FROM dbo.Posts) as TotalPosts,
@@ -253,7 +255,10 @@ exports.lockNews = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.editorApprove = async (req, res) => {
     const { id } = req.params;
-    const { editorId, storagePath, categoryName } = req.body;
+    const { storagePath, categoryName } = req.body;
+    // ✅ Lấy EditorID từ token đã xác thực, không tin editorId client gửi lên
+    // (route này chỉ vào được qua requireRoles(APPROVE_ROLES) nên req.user luôn là người có quyền duyệt).
+    const editorId = req.user.UserID;
     const STORAGE_ROOT = path.resolve(process.env.STORAGE_ROOT || path.join(__dirname, '../uploads'));
 
     try {

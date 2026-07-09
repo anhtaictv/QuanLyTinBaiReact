@@ -78,8 +78,8 @@ frontend/                     # React SPA
 | Người duyệt | 2 | Duyệt/từ chối, biên tập sửa file |
 | Trưởng ban | 3 | Duyệt/từ chối, khóa/mở bài |
 | Admin | 4 | Toàn quyền, quản lý người dùng, xem log lỗi |
-| Thư ký | 5 | Duyệt/từ chối |
-| Kiểm soát viên | 6 | Chỉ xem |
+| Thư ký | 5 | Chỉ xử lý bài đã duyệt (lưu trữ/xuất bản) — không thấy/không duyệt được bài đang chờ duyệt |
+| Kiểm soát viên | 6 | Xem toàn bộ bài viết (mọi trạng thái), không duyệt/khóa/sửa |
 
 Phân quyền được kiểm tra **ở backend** (middleware), không chỉ ẩn nút ở giao diện.
 
