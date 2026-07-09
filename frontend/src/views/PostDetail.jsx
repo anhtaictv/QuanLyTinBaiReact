@@ -58,7 +58,8 @@ const PostDetail = () => {
 
   const currentUser = JSON.parse(localStorage.getItem('user')) || {};
   const userRole    = (currentUser?.role || currentUser?.Role || '').toLowerCase();
-  const canEdit     = ['admin', 'người duyệt', 'trưởng ban', 'thư ký'].includes(userRole);
+  // "Thư ký" không có ở đây — họ chỉ xử lý bài đã duyệt, không duyệt/mở Google Docs cho bài chờ duyệt.
+  const canEdit     = ['admin', 'người duyệt', 'trưởng ban'].includes(userRole);
   const isCTV       = !canEdit;
   const hasFile     = !!(post?.StoragePath || post?.storagePath);
   const statusID    = post?.StatusID || post?.statusID;

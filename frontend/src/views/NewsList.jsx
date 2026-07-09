@@ -25,8 +25,9 @@ const NewsList = () => {
   const currentUser = JSON.parse(localStorage.getItem('user'));
   const userRole = (currentUser?.role || currentUser?.Role || "").toLowerCase();
 
-  // Định nghĩa quyền hạn
-  const canApproveOrReject = ['admin', 'người duyệt', 'trưởng ban', 'thư ký'].includes(userRole);
+  // Định nghĩa quyền hạn.
+  // "Thư ký" không có ở đây — họ chỉ xử lý bài đã duyệt, không duyệt/từ chối bài chờ duyệt.
+  const canApproveOrReject = ['admin', 'người duyệt', 'trưởng ban'].includes(userRole);
   const canLockOrUnlock = ['admin', 'trưởng ban'].includes(userRole);
   const canDeletePost = ['admin'].includes(userRole);
 

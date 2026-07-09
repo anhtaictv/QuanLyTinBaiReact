@@ -97,9 +97,16 @@ function friendlyDriveError(err) {
     : err.message;
 }
 
+// Trả về null nếu storedPath (do client gửi lên) cố thoát ra ngoài STORAGE_ROOT
+// (path traversal, vd "../../../.env") — so sánh kèm path.sep để tránh bị qua mặt
+// bởi thư mục anh em cùng tiền tố (vd "STORAGE_ROOT_backup").
 function resolveLocalPath(storedPath) {
-  const cleaned  = storedPath.replace(/^Storage\//, '');
-  const fullPath = path.resolve(STORAGE_ROOT, cleaned);
+  const cleaned      = storedPath.replace(/^Storage\//, '');
+  const rootResolved = path.resolve(STORAGE_ROOT);
+  const fullPath      = path.resolve(rootResolved, cleaned);
+  if (fullPath !== rootResolved && !fullPath.startsWith(rootResolved + path.sep)) {
+    return null;
+  }
   return fullPath;
 }
 
@@ -114,6 +121,8 @@ router.post('/upload', async (req, res) => {
   if (!FOLDER_ID)   return res.status(500).json({ error: 'Chưa cấu hình GOOGLE_DRIVE_FOLDER_ID trong .env' });
 
   const localPath = resolveLocalPath(storagePath);
+  if (!localPath) return res.status(400).json({ error: 'storagePath không hợp lệ' });
+
   console.log(`📤 [Drive] Upload | postId=${postId}`);
   console.log(`📂 [Drive] STORAGE_ROOT: ${path.resolve(STORAGE_ROOT)}`);
   console.log(`📂 [Drive] localPath: ${localPath}`);
@@ -182,6 +191,7 @@ router.post('/complete/:driveFileId', async (req, res) => {
   }
 
   const localPath = resolveLocalPath(storagePath);
+  if (!localPath) return res.status(400).json({ error: 'storagePath không hợp lệ' });
   console.log(`📂 [Drive] Ghi đè tại: ${localPath}`);
 
   try {

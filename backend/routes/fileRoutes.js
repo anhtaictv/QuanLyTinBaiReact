@@ -73,8 +73,9 @@ router.get('/download', (req, res) => {
     console.log('📂 STORAGE_ROOT:', rootResolved);
     console.log('📂 fullPath:', fullPath);
 
-    // ✅ Dùng path.resolve để so sánh chính xác trên cả Windows lẫn Linux
-    if (!fullPath.startsWith(rootResolved)) {
+    // ✅ Dùng path.resolve để so sánh chính xác trên cả Windows lẫn Linux — kèm path.sep
+    // để tránh bị qua mặt bởi thư mục anh em cùng tiền tố (vd "STORAGE_ROOT_backup").
+    if (fullPath !== rootResolved && !fullPath.startsWith(rootResolved + path.sep)) {
         console.log('❌ Bị chặn bảo mật');
         return res.status(403).json({ error: 'Truy cập bị từ chối' });
     }

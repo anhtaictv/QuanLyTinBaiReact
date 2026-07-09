@@ -135,8 +135,10 @@ exports.createNews = async (req, res) => {
         const newPostId = insertResult.recordset[0]?.PostID;
 
         // ✅ Push thông báo cho người duyệt (không await để không delay response)
+        // "Thư ký" không nằm trong danh sách — họ không thấy được bài chờ duyệt
+        // (xem getAllNews), báo cho họ chỉ dẫn tới link chết.
         sendPushToRoles(
-            ['admin', 'người duyệt', 'trưởng ban', 'thư ký'],
+            ['admin', 'người duyệt', 'trưởng ban'],
             '📰 Bài mới cần duyệt',
             `"${tieuDe || 'Bài viết mới'}" – gửi bởi ${ten || 'CTV'}`,
             `/news/${newPostId}`

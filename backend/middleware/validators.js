@@ -19,7 +19,7 @@ const registerRules = [
     body('FullName').trim().isLength({ min: 2, max: 100 }).withMessage('Họ tên phải từ 2-100 ký tự!'),
     body('Age').optional({ values: 'falsy' }).isInt({ min: 16, max: 100 }).withMessage('Tuổi không hợp lệ!'),
     body('Department').optional({ values: 'falsy' }).trim().isLength({ max: 100 }).withMessage('Tên đơn vị quá dài!'),
-    body('Email').optional({ values: 'falsy' }).trim().isEmail().withMessage('Email không hợp lệ!').normalizeEmail(),
+    body('Email').optional({ values: 'falsy' }).trim().isEmail().withMessage('Email không hợp lệ!').normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false }),
 ];
 
 const loginRules = [
@@ -33,12 +33,12 @@ const changePasswordRules = [
 ];
 
 const updateEmailRules = [
-    body('Email').trim().isEmail().withMessage('Email không hợp lệ!').normalizeEmail(),
+    body('Email').trim().isEmail().withMessage('Email không hợp lệ!').normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false }),
 ];
 
 const forgotPasswordRules = [
     body('Username').trim().notEmpty().withMessage('Vui lòng nhập tên đăng nhập!'),
-    body('Email').trim().isEmail().withMessage('Email không hợp lệ!').normalizeEmail(),
+    body('Email').trim().isEmail().withMessage('Email không hợp lệ!').normalizeEmail({ gmail_remove_dots: false, gmail_remove_subaddress: false }),
 ];
 
 const resetPasswordRules = [
