@@ -16,6 +16,7 @@ const Permissions     = lazy(() => import('./views/Permissions'));
 const ChangePassword  = lazy(() => import('./views/ChangePassword'));
 const DocEditor       = lazy(() => import('./views/DocEditor'));
 const Chat            = lazy(() => import('./views/Chat'));
+const NewsDigest      = lazy(() => import('./views/NewsDigest'));
 
 // 1. Component bảo vệ Đăng nhập: Chưa đăng nhập thì không cho vào App
 const ProtectedRoute = () => {
@@ -61,6 +62,7 @@ function App() {
               <Route path="news" element={<NewsList />} />
               <Route path="news/create" element={<NewsForm />} />
               <Route path="news/:id" element={<PostDetail />} />
+              <Route path="news-digest" element={<NewsDigest />} />
 
               {/* ✅ SỬA: dùng :postId để khớp với useParams() trong DocEditor.jsx */}
               <Route path="doc-editor/:postId" element={<DocEditor />} />

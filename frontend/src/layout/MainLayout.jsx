@@ -8,7 +8,7 @@ import { disconnectChatSocket } from '../hooks/useChatSocket';
 import { ThemeContext } from '../context/ThemeContext';
 import {
   IconGrid, IconList, IconPlus, IconChat, IconKey, IconUsers, IconLogout,
-  IconRefresh, IconBell, IconBellOff, IconMenu, IconX, IconSun, IconMoon, IconMail
+  IconRefresh, IconBell, IconBellOff, IconMenu, IconX, IconSun, IconMoon, IconMail, IconNewspaper
 } from '../components/icons';
 
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 phút không hoạt động thì tự đăng xuất
@@ -235,6 +235,7 @@ const MainLayout = () => {
         <Link className="side-nav-link" to="/dashboard"       style={menuStyle('/dashboard')}       onClick={() => setSidebarOpen(false)}><IconGrid size={17}/>Dashboard</Link>
         <Link className="side-nav-link" to="/news"            style={menuStyle('/news')}            onClick={() => setSidebarOpen(false)}><IconList size={17}/>Danh sách tin</Link>
         <Link className="side-nav-link" to="/news/create"     style={menuStyle('/news/create')}     onClick={() => setSidebarOpen(false)}><IconPlus size={17}/>Gửi bài mới</Link>
+        <Link className="side-nav-link" to="/news-digest"     style={menuStyle('/news-digest')}     onClick={() => setSidebarOpen(false)}><IconNewspaper size={17}/>Tổng hợp tin địa phương</Link>
         <Link className="side-nav-link" to="/chat"            style={menuStyle('/chat')}            onClick={() => setSidebarOpen(false)}><IconChat size={17}/>Tin nhắn</Link>
         <Link className="side-nav-link" to="/change-password" style={menuStyle('/change-password')} onClick={() => setSidebarOpen(false)}><IconKey size={17}/>Đổi mật khẩu</Link>
 
@@ -274,7 +275,7 @@ const MainLayout = () => {
           .mobile-topbar   { display: none !important; }
           .mobile-drawer   { display: none !important; }
           .overlay         { display: none !important; }
-          .main-content    { padding: 28px !important; }
+          .main-content    { padding: 28px !important; padding-top: calc(env(safe-area-inset-top, 0px) + 28px) !important; }
         }
         @media (max-width: 768px) {
           .desktop-sidebar { display: none !important; }
@@ -284,7 +285,7 @@ const MainLayout = () => {
       `}</style>
 
       {/* ── DESKTOP SIDEBAR ── */}
-      <div className="desktop-sidebar" style={{ width: '260px', background: 'var(--sidebar-bg)', color: 'var(--sidebar-fg)', padding: '18px', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      <div className="desktop-sidebar" style={{ width: '260px', background: 'var(--sidebar-bg)', color: 'var(--sidebar-fg)', padding: '18px', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 18px)', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
         <SidebarContent />
       </div>
 
@@ -319,7 +320,7 @@ const MainLayout = () => {
         <div className="overlay" onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 150 }} />
       )}
 
-      <div className="mobile-drawer" style={{ display: sidebarOpen ? 'flex' : 'none', position: 'fixed', top: 0, left: 0, bottom: 0, width: '260px', background: 'var(--sidebar-bg)', color: 'var(--sidebar-fg)', padding: '18px', flexDirection: 'column', zIndex: 200, overflowY: 'auto' }}>
+      <div className="mobile-drawer" style={{ display: sidebarOpen ? 'flex' : 'none', position: 'fixed', top: 0, left: 0, bottom: 0, width: '260px', background: 'var(--sidebar-bg)', color: 'var(--sidebar-fg)', padding: '18px', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 18px)', flexDirection: 'column', zIndex: 200, overflowY: 'auto' }}>
         <button onClick={() => setSidebarOpen(false)} aria-label="Đóng menu" style={{ alignSelf: 'flex-end', background: 'transparent', border: 'none', color: 'var(--sidebar-fg)', marginBottom: '10px', cursor: 'pointer' }}>
           <IconX size={20} />
         </button>
