@@ -1,30 +1,15 @@
-// Gom tin từ RSS các báo lớn + tìm kiếm Google Tin tức, lọc lấy tin liên quan tới địa bàn
-// Đắk Lắk, lưu vào dbo.NewsDigestItems. Dùng chung bởi scripts/fetch-news-digest.js (chạy
-// định kỳ qua Windows Task Scheduler) và controllers/newsDigestController.js (nút "Cập nhật
-// ngay" của Admin).
+// Gom tin từ RSS các báo lớn, lọc lấy tin liên quan tới địa bàn Đắk Lắk, lưu vào
+// dbo.NewsDigestItems. Dùng chung bởi scripts/fetch-news-digest.js (chạy định kỳ qua
+// Windows Task Scheduler) và controllers/newsDigestController.js (nút "Cập nhật ngay" của Admin).
 //
 // Chưa có báo nào ở Đắk Lắk tự cấp RSS theo tỉnh (baodaklak.vn không có RSS, VnExpress/Dân
-// Trí/Tuổi Trẻ chỉ chia RSS theo chuyên mục, không theo tỉnh) — nên ngoài các chuyên mục có
-// khả năng liên quan (thời sự, pháp luật, đời sống, địa phương) từ báo lớn, có thêm 1 nguồn
-// "Google Tin tức" bằng RSS tìm kiếm chính thức của Google (news.google.com/rss/search) với
-// từ khoá Đắk Lắk/Buôn Ma Thuột — gom được cả các báo/đài nhỏ hơn mà danh sách cứng dưới đây
-// không có, mà không phải cào HTML trang kết quả tìm kiếm (dễ vỡ, có thể vi phạm điều khoản
-// dùng của Google). Khi nào tòa soạn có link RSS riêng của báo/đài địa phương, chỉ cần thêm
-// vào SOURCES.
+// Trí/Tuổi Trẻ chỉ chia RSS theo chuyên mục, không theo tỉnh) — nên lấy các chuyên mục có khả
+// năng liên quan (thời sự, pháp luật, đời sống, địa phương) từ báo lớn rồi lọc theo từ khoá
+// địa danh. Khi nào tòa soạn có link RSS riêng của báo/đài địa phương, chỉ cần thêm vào SOURCES.
 const Parser = require('rss-parser');
 const { poolPromise, sql } = require('../config/db');
-const { KEYWORDS, matchKeyword, normalizeTitleForDedup, shortenSummary } = require('./newsDigestText');
 
-const parser = new Parser({
-    timeout: 15000,
-    // Google News RSS gắn tên báo gốc vào tag <source> riêng (ngoài chuẩn RSS) — khai báo
-    // customFields để rss-parser không bỏ qua, dùng để hiển thị "Google Tin tức - <báo gốc>"
-    // thay vì chỉ ghi "Google Tin tức" chung.
-    customFields: { item: [['source', 'sourceTag']] },
-});
-
-// Query tìm trên Google Tin tức — URL-encode ở nơi dùng (GOOGLE_NEWS_QUERY) vì có dấu + dấu ".
-const GOOGLE_NEWS_QUERY = '"Đắk Lắk" OR "Buôn Ma Thuột"';
+const parser = new Parser({ timeout: 15000 });
 
 const SOURCES = [
     { name: 'VnExpress - Thời sự',        url: 'https://vnexpress.net/rss/thoi-su.rss' },
@@ -37,41 +22,35 @@ const SOURCES = [
     { name: 'Tuổi Trẻ - Pháp luật',       url: 'https://tuoitre.vn/phap-luat.rss' },
     { name: 'Tuổi Trẻ - Bạn đọc',         url: 'https://tuoitre.vn/ban-doc.rss' },
     { name: 'Báo Tin Tức (TTXVN) - Địa phương', url: 'https://baotintuc.vn/dia-phuong.rss' },
-    {
-        name: 'Google Tin tức',
-        url: `https://news.google.com/rss/search?q=${encodeURIComponent(GOOGLE_NEWS_QUERY)}&hl=vi&gl=VN&ceid=VN:vi`,
-        isGoogleNews: true,
-    },
 ];
+
+// So khớp không phân biệt hoa/thường và có dấu/không dấu (RSS đôi khi gõ "Dak Lak" không dấu).
+const KEYWORDS = ['đắk lắk', 'dak lak', 'buôn ma thuột', 'buon ma thuot'];
+
+function stripDiacritics(str) {
+    return str.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd');
+}
+
+function matchKeyword(text) {
+    const normalized = stripDiacritics((text || '').toLowerCase());
+    for (const kw of KEYWORDS) {
+        if (normalized.includes(stripDiacritics(kw))) return kw;
+    }
+    return null;
+}
 
 async function fetchOneSource(source) {
     const feed = await parser.parseURL(source.url);
     const matched = [];
     for (const item of feed.items || []) {
-        let title = item.title || '(Không tiêu đề)';
-        let sourceName = source.name;
-
-        if (source.isGoogleNews) {
-            // <source> có thể parse ra string hoặc { _, $ } tuỳ có attribute hay không.
-            const rawSource = typeof item.sourceTag === 'object' ? item.sourceTag?._ : item.sourceTag;
-            if (rawSource) {
-                sourceName = `Google Tin tức - ${rawSource}`;
-                const suffix = ` - ${rawSource}`;
-                if (title.endsWith(suffix)) title = title.slice(0, -suffix.length);
-            }
-        }
-
-        const haystack = `${title} ${item.contentSnippet || item.summary || ''}`;
-        // Nguồn Google Tin tức đã tự lọc theo GOOGLE_NEWS_QUERY nên tin trả về chắc chắn liên
-        // quan — không loại nếu KEYWORDS không khớp y nguyên (vd chỉ nhắc tên xã/huyện cụ thể).
-        const keyword = matchKeyword(haystack) || (source.isGoogleNews ? 'đắk lắk / buôn ma thuột (Google)' : null);
+        const haystack = `${item.title || ''} ${item.contentSnippet || item.summary || ''}`;
+        const keyword = matchKeyword(haystack);
         if (!keyword) continue;
-
         matched.push({
-            title,
+            title: item.title || '(Không tiêu đề)',
             link: item.link,
-            sourceName,
-            summary: shortenSummary(item.contentSnippet || item.summary || ''),
+            sourceName: source.name,
+            summary: (item.contentSnippet || item.summary || '').slice(0, 2000),
             keyword,
             publishedAt: item.isoDate || item.pubDate || null,
         });
@@ -95,27 +74,12 @@ async function fetchAllSources() {
     return { items: results, errors };
 }
 
-// Ghi từng bài, bỏ qua nếu đã tồn tại. Hai lớp chống trùng:
-//  1. Link giống hệt -> lỗi trùng khoá từ UX_NewsDigestItems_LinkHash (bắt qua catch, không
-//     cần SELECT trước cho trường hợp phổ biến này).
-//  2. Cùng tin nhưng Link khác (Google Tin tức trỏ qua link redirect riêng, hoặc báo đăng lại
-//     nguyên văn từ nguồn khác) -> so theo NormTitle, check trước bằng 1 lần SELECT chung cho
-//     cả batch (đỡ hơn N lần SELECT), cộng dồn luôn các NormTitle vừa thêm trong batch để 2 tin
-//     trùng tới từ 2 nguồn khác nhau trong CÙNG 1 lần fetch cũng không lọt cả hai vào.
+// Ghi từng bài, bỏ qua nếu đã tồn tại (dựa trên unique index UX_NewsDigestItems_LinkHash) —
+// tránh phải SELECT trước để check tồn tại, để SQL Server tự xử lý qua lỗi trùng khoá.
 async function saveItems(items) {
     const pool = await poolPromise;
-
-    const existing = await pool.request().query(`
-        SELECT NormTitle FROM dbo.NewsDigestItems
-        WHERE NormTitle IS NOT NULL AND FetchedAt >= DATEADD(day, -30, GETUTCDATE())
-    `);
-    const seenTitles = new Set((existing.recordset || []).map(r => r.NormTitle));
-
     let inserted = 0;
     for (const it of items) {
-        const normTitle = normalizeTitleForDedup(it.title);
-        if (normTitle && seenTitles.has(normTitle)) continue;
-
         try {
             await pool.request()
                 .input('Title', sql.NVarChar(500), it.title.slice(0, 500))
@@ -124,13 +88,11 @@ async function saveItems(items) {
                 .input('Summary', sql.NVarChar(sql.MAX), it.summary)
                 .input('Keyword', sql.NVarChar(100), it.keyword)
                 .input('PublishedAt', sql.DateTime, it.publishedAt ? new Date(it.publishedAt) : null)
-                .input('NormTitle', sql.NVarChar(500), normTitle.slice(0, 500))
                 .query(`
-                    INSERT INTO dbo.NewsDigestItems (Title, Link, SourceName, Summary, Keyword, PublishedAt, NormTitle)
-                    VALUES (@Title, @Link, @SourceName, @Summary, @Keyword, @PublishedAt, @NormTitle)
+                    INSERT INTO dbo.NewsDigestItems (Title, Link, SourceName, Summary, Keyword, PublishedAt)
+                    VALUES (@Title, @Link, @SourceName, @Summary, @Keyword, @PublishedAt)
                 `);
             inserted++;
-            seenTitles.add(normTitle);
         } catch (err) {
             // Lỗi trùng khoá (đã có bài này rồi) là chuyện bình thường mỗi lần chạy lại — bỏ qua.
             // Lỗi khác (mất kết nối DB...) thì cho nổi lên để script/route gọi biết mà xử lý.
@@ -147,4 +109,4 @@ async function runDigestFetch() {
     return { matched: items.length, inserted, sourceErrors: errors };
 }
 
-module.exports = { runDigestFetch, SOURCES, KEYWORDS, normalizeTitleForDedup };
+module.exports = { runDigestFetch, SOURCES, KEYWORDS };
