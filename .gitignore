@@ -17,10 +17,6 @@ uploads/
 *.log
 npm-debug.log*
 
-# Editor/tooling — .claude/ chỉ ignore cấu hình cá nhân (settings, permissions...), giữ lại
-# .claude/skills/ vì skill là tài sản chung của repo, không phải config máy của từng người.
-# (Git không cho un-ignore file nếu thư mục cha bị ignore, nên phải ignore theo từng mục con
-# thay vì ignore trọn ".claude/" rồi "!" lại — cách đó không có tác dụng.)
-.claude/*
-!.claude/skills/
+# Editor/tooling
+.claude/
 .vscode/
