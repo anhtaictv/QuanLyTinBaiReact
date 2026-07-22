@@ -1,6 +1,7 @@
 // Chạy 1 lần (hoặc nhiều lần an toàn): tạo bảng lưu tin tổng hợp từ RSS báo chí cho
 // tab "Tổng hợp tin địa phương" nếu chưa có.
-const { poolPromise } = require('../config/db');
+const { poolPromise, sql } = require('../config/db');
+const { normalizeTitleForDedup } = require('../utils/newsDigestText');
 
 (async () => {
   const pool = await poolPromise;
@@ -44,6 +45,31 @@ const { poolPromise } = require('../config/db');
     END
   `);
   console.log('Index IX_NewsDigestItems_PublishedAt OK.');
+
+  console.log('Đang thêm cột NormTitle (chống trùng theo tiêu đề khi Link khác nhau) nếu chưa có...');
+  await pool.request().query(`
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.NewsDigestItems') AND name = 'NormTitle')
+    BEGIN
+      ALTER TABLE dbo.NewsDigestItems ADD NormTitle NVARCHAR(500) NULL;
+    END
+  `);
+  console.log('Đang tạo index hỗ trợ tra NormTitle...');
+  await pool.request().query(`
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NewsDigestItems_NormTitle' AND object_id = OBJECT_ID('dbo.NewsDigestItems'))
+    BEGIN
+      CREATE INDEX IX_NewsDigestItems_NormTitle ON dbo.NewsDigestItems(NormTitle);
+    END
+  `);
+
+  console.log('Đang backfill NormTitle cho các bài đã có từ trước (nếu có)...');
+  const oldRows = await pool.request().query(`SELECT ItemID, Title FROM dbo.NewsDigestItems WHERE NormTitle IS NULL`);
+  for (const row of oldRows.recordset || []) {
+    await pool.request()
+      .input('ItemID', sql.Int, row.ItemID)
+      .input('NormTitle', sql.NVarChar(500), normalizeTitleForDedup(row.Title).slice(0, 500))
+      .query(`UPDATE dbo.NewsDigestItems SET NormTitle = @NormTitle WHERE ItemID = @ItemID`);
+  }
+  console.log(`Backfill xong ${oldRows.recordset?.length || 0} bài.`);
 
   console.log('Hoàn tất tạo bảng NewsDigestItems.');
   process.exit(0);
