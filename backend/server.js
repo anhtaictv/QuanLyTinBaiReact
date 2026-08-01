@@ -20,6 +20,7 @@ const pushRoutes = require('./routes/pushRoutes');
 const errorLogRoutes = require('./routes/errorLogRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const newsDigestRoutes = require('./routes/newsDigestRoutes');
+const aiRoutes = require('./routes/aiRoutes');
 const { initChatSocket } = require('./sockets/chatSocket');
 const { setIO } = require('./sockets/ioHolder');
 const { logError } = require('./utils/errorLogger');
@@ -130,6 +131,7 @@ app.use('/api/push', verifyToken, pushRoutes);
 app.use('/api/errors', verifyToken, isAdmin, errorLogRoutes);
 app.use('/api/chat', verifyToken, chatRoutes);
 app.use('/api/news-digest', verifyToken, newsDigestRoutes);
+app.use('/api/ai', verifyToken, aiRoutes);
 
 
 // Lấy danh sách user cơ bản

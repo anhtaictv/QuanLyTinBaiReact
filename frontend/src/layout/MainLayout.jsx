@@ -4,11 +4,13 @@ import useIdleLogout from '../hooks/useIdleLogout';
 import useSessionRefresh from '../hooks/useSessionRefresh';
 import ErrorBell from '../components/ErrorBell';
 import ChatBell from '../components/ChatBell';
+import AIBell from '../components/AIBell';
 import { disconnectChatSocket } from '../hooks/useChatSocket';
 import { ThemeContext } from '../context/ThemeContext';
 import {
   IconGrid, IconList, IconPlus, IconChat, IconKey, IconUsers, IconLogout,
-  IconRefresh, IconBell, IconBellOff, IconMenu, IconX, IconSun, IconMoon, IconMail, IconNewspaper
+  IconRefresh, IconBell, IconBellOff, IconMenu, IconX, IconSun, IconMoon, IconMail, IconNewspaper,
+  IconRobot
 } from '../components/icons';
 
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 phút không hoạt động thì tự đăng xuất
@@ -32,6 +34,7 @@ const MainLayout = () => {
   const userObj  = JSON.parse(localStorage.getItem('user'));
   const userRole = (userObj?.role || userObj?.Role || '').toLowerCase();
   const isAdminLevel = ['admin', 'trưởng ban'].includes(userRole);
+  const canManageAiKnowledge = ['admin', 'trưởng ban', 'thư ký'].includes(userRole);
   const isAdminStrict = userRole === 'admin';
   const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -208,6 +211,7 @@ const MainLayout = () => {
         <div style={{ display: 'flex', gap: 5 }}>
           {isAdminStrict && <ErrorBell />}
           <ChatBell />
+          <AIBell />
           <NotifBtn />
           <button onClick={handleRefresh} aria-label="Tải lại trang" title="Tải lại trang" style={chipStyle}><IconRefresh size={15} /></button>
         </div>
@@ -248,6 +252,12 @@ const MainLayout = () => {
               <IconUsers size={17}/>Quản lý Nhân sự
             </Link>
           </>
+        )}
+
+        {userObj && canManageAiKnowledge && (
+          <Link className="side-nav-link" to="/ai-knowledge" style={menuStyle('/ai-knowledge')} onClick={() => setSidebarOpen(false)}>
+            <IconRobot size={17}/>Kho tri thức AI
+          </Link>
         )}
       </div>
 
@@ -309,6 +319,7 @@ const MainLayout = () => {
         <div style={{ display: 'flex', gap: 5 }}>
           {isAdminStrict && <ErrorBell />}
           <ChatBell />
+          <AIBell />
           <NotifBtn />
           <button onClick={handleRefresh} aria-label="Tải lại trang" style={{ ...chipStyle, width: 40, height: 40 }}>
             <IconRefresh size={18} />
