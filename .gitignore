@@ -13,6 +13,9 @@ backend.txt
 # Dữ liệu upload runtime, không phải source code
 uploads/
 
+# Kho tri thức RAG (module AI local) - dữ liệu nạp tay trên từng máy, không phải source
+backend/data/rag-index.json
+
 # Logs
 *.log
 npm-debug.log*

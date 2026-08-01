@@ -17,6 +17,7 @@ const ChangePassword  = lazy(() => import('./views/ChangePassword'));
 const DocEditor       = lazy(() => import('./views/DocEditor'));
 const Chat            = lazy(() => import('./views/Chat'));
 const NewsDigest      = lazy(() => import('./views/NewsDigest'));
+const AIKnowledge     = lazy(() => import('./views/AIKnowledge'));
 
 // 1. Component bảo vệ Đăng nhập: Chưa đăng nhập thì không cho vào App
 const ProtectedRoute = () => {
@@ -75,6 +76,7 @@ function App() {
               <Route element={<AdminRoute />}>
                 <Route path="users" element={<UserManagement />} />
                 <Route path="permissions" element={<Permissions />} />
+                <Route path="ai-knowledge" element={<AIKnowledge />} />
               </Route>
 
             </Route>

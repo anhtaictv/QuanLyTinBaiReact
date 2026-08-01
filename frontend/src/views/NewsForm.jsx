@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { scanSensitive } from '../services/aiService';
 import { showToastSuccess } from '../utils/Toast';
 import { IconPlus, IconAlertCircle, IconFolder, IconX, IconSend, IconLoader } from '../components/icons';
+import AIEditorialPanel from '../components/ai/AIEditorialPanel';
+import AICategorySuggest from '../components/ai/AICategorySuggest';
+import SensitiveDataWarning from '../components/ai/SensitiveDataWarning';
 
 const NewsForm = () => {
   const navigate    = useNavigate();
@@ -25,6 +29,7 @@ const NewsForm = () => {
   const [file,       setFile]       = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error,      setError]      = useState('');
+  const [sensitiveResult, setSensitiveResult] = useState(null); // { piiMatches, wordingWarnings }
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -44,6 +49,25 @@ const NewsForm = () => {
       return;
     }
 
+    // Kiểm tra dữ liệu nhạy cảm trước khi gửi — nếu AI local chưa kết nối, bỏ qua bước
+    // này êm và gửi bài như bình thường (không chặn công việc vì thiếu AI).
+    const textToScan = [formData.tieuDe, formData.sapo, formData.noiDung].filter(Boolean).join('\n\n');
+    if (textToScan.trim()) {
+      try {
+        const { data } = await scanSensitive(textToScan);
+        if (data.piiMatches?.length > 0 || data.wordingWarnings?.length > 0) {
+          setSensitiveResult(data);
+          return;
+        }
+      } catch {
+        // AI chưa sẵn sàng hoặc lỗi tạm thời — không chặn việc gửi bài.
+      }
+    }
+
+    await submitNews();
+  };
+
+  const submitNews = async () => {
     setSubmitting(true);
     try {
       // Bước 1: Upload file
@@ -96,6 +120,15 @@ const NewsForm = () => {
         </div>
       )}
 
+      {sensitiveResult && (
+        <SensitiveDataWarning
+          piiMatches={sensitiveResult.piiMatches}
+          wordingWarnings={sensitiveResult.wordingWarnings}
+          onCancel={() => setSensitiveResult(null)}
+          onConfirmSend={() => { setSensitiveResult(null); submitNews(); }}
+        />
+      )}
+
       <form onSubmit={handleSubmit}>
 
         {/* Chuyên mục */}
@@ -110,6 +143,11 @@ const NewsForm = () => {
               <option key={cat.id} value={cat.id}>{cat.name}</option>
             ))}
           </select>
+          <AICategorySuggest
+            content={formData.noiDung}
+            categories={categories}
+            onApplyCategory={(id) => setCategoryId(id)}
+          />
         </div>
 
         {/* Tiêu đề */}
@@ -146,6 +184,13 @@ const NewsForm = () => {
             placeholder="Mô tả ngắn nội dung bài viết..."
           />
         </div>
+
+        <AIEditorialPanel
+          content={formData.noiDung}
+          onApplyContent={(text) => setFormData(prev => ({ ...prev, noiDung: text }))}
+          onApplyTitle={(title) => setFormData(prev => ({ ...prev, tieuDe: title }))}
+          onApplySapo={(sapo) => setFormData(prev => ({ ...prev, sapo }))}
+        />
 
         {/* Upload file */}
         <div style={{ marginBottom: 24, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
