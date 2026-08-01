@@ -1,0 +1,108 @@
+name: Deploy (VPS via PM2)
+
+# Chi chay sau khi workflow CI (build+test) tren cung commit da pass, hoac bam
+# tay tu tab Actions khi can. Cung convention voi soul-diary-deploy-windows.yml
+# ben repo Soul-Diary va BaoTin - tu chay tren self-hosted runner dat ngay tren
+# VPS nay, khong qua SSH.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-qltin
+  cancel-in-progress: false
+
+env:
+  # Runner service khong chay duoi user Administrator, nhung PM2 daemon dang
+  # chay (qltin-backend) lai thuoc PM2_HOME cua Administrator. Tro thang toi
+  # do de pm2 stop/restart trong job nay noi dung voi dung daemon.
+  PM2_HOME: C:\Users\Administrator\.pm2
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: [self-hosted, qltin-vps]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Sync backend code into place
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dest = "C:\WebApp\backend\backend"
+
+          # Xoa truoc tung entry cung ten o dich (khong dung .env, uploads/ hay
+          # node_modules - nhung thu do khong nam trong git repo nen khong co
+          # trong danh sach nguon, khong bao gio bi dong tren o buoc nay).
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Get-ChildItem "backend" -Name | ForEach-Object {
+            $target = Join-Path $dest $_
+            if (Test-Path $target) { Remove-Item $target -Recurse -Force }
+          }
+          Copy-Item -Path "backend\*" -Destination $dest -Recurse -Force
+
+      - name: Install deps, restart backend via pm2
+        shell: powershell
+        working-directory: C:\WebApp\backend\backend
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          # Service chay LocalSystem, khong co PATH cua user Administrator - pm2
+          # global chi nam trong AppData\Roaming\npm cua Administrator.
+          $env:Path = "C:\Users\Administrator\AppData\Roaming\npm;$env:Path"
+
+          # pm2 stop truoc npm ci - process dang chay giu file .node native addon
+          # (bcrypt) dang dung, unlink se loi EPERM va npm ci se xoa dat node_modules.
+          pm2 stop qltin-backend
+
+          npm ci --omit=dev
+
+          pm2 restart qltin-backend --update-env
+          pm2 save
+
+      - name: Build frontend
+        shell: powershell
+        working-directory: frontend
+        run: |
+          $ErrorActionPreference = "Stop"
+          npm ci
+          npm run build
+
+      - name: Sync frontend into IIS
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dest = "C:\inetpub\wwwroot\qltin"
+
+          # IIS phuc vu file tinh truc tiep tu dia, khong can recycle app pool
+          # sau khi thay noi dung - sync xong la ap dung ngay cho request tiep theo.
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Get-ChildItem "frontend\build" -Name | ForEach-Object {
+            $target = Join-Path $dest $_
+            if (Test-Path $target) { Remove-Item $target -Recurse -Force }
+          }
+          Copy-Item -Path "frontend\build\*" -Destination $dest -Recurse -Force
+
+      - name: Verify backend health
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ok = $false
+          for ($i = 0; $i -lt 15; $i++) {
+            Start-Sleep -Seconds 2
+            try {
+              $resp = Invoke-WebRequest -Uri "http://127.0.0.1:5001/api/health" -UseBasicParsing -TimeoutSec 5
+              if ($resp.StatusCode -eq 200) { $ok = $true; break }
+            } catch {}
+          }
+          if (-not $ok) { throw "qltin-backend did not report healthy after restart" }
+          Write-Output "qltin-backend healthy."
