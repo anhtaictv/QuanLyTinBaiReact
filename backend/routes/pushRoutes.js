@@ -44,16 +44,14 @@ router.post('/subscribe', async (req, res) => {
         .input('Subscription',  subStr)
         .query('UPDATE dbo.PushSubscriptions SET Subscription = @Subscription, UpdatedAt = GETDATE() WHERE SubscriptionID = @SubscriptionID');
     } else {
-      try {
-        await pool.request()
-          .input('UserID',       userID)
-          .input('Subscription', subStr)
-          .query('INSERT INTO dbo.PushSubscriptions (UserID, Subscription, CreatedAt, UpdatedAt) VALUES (@UserID, @Subscription, GETDATE(), GETDATE())');
-      } catch (err) {
-        // Trùng UX_PushSubscriptions_EndpointHash — request khác đã insert đúng endpoint này
-        // ngay trước (2 tab mở cùng lúc bấm bật thông báo) — coi như đã lưu, không phải lỗi.
-        if (!/violat|duplicate|unique/i.test(err.message)) throw err;
-      }
+      // ponytail: không có unique constraint chặn 2 request subscribe cùng lúc từ đúng 1
+      // thiết bị (SQL Server không cho filtered index trên computed column, xem
+      // scripts/add-device-to-push-subscriptions.js) — race hiếm này chỉ tạo dư 1 dòng,
+      // không phải lỗi, nên không cần try/catch riêng ở đây.
+      await pool.request()
+        .input('UserID',       userID)
+        .input('Subscription', subStr)
+        .query('INSERT INTO dbo.PushSubscriptions (UserID, Subscription, CreatedAt, UpdatedAt) VALUES (@UserID, @Subscription, GETDATE(), GETDATE())');
     }
 
     console.log(`✅ [Push] Đã lưu subscription cho UserID=${userID}`);

@@ -19,14 +19,11 @@ const { poolPromise } = require('../config/db');
   `);
   console.log('Cột EndpointHash OK.');
 
-  console.log('Đang tạo unique index chống trùng subscription theo endpoint...');
-  await pool.request().query(`
-    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_PushSubscriptions_EndpointHash' AND object_id = OBJECT_ID('dbo.PushSubscriptions'))
-    BEGIN
-      CREATE UNIQUE INDEX UX_PushSubscriptions_EndpointHash ON dbo.PushSubscriptions(EndpointHash) WHERE EndpointHash IS NOT NULL;
-    END
-  `);
-  console.log('Index UX_PushSubscriptions_EndpointHash OK.');
+  // ponytail: SQL Server không cho filtered index (WHERE EndpointHash IS NOT NULL) tham
+  // chiếu computed column trong biểu thức filter — bỏ qua unique index, chỉ dựa vào
+  // SELECT-trước-khi-insert trong routes/pushRoutes.js (đã có) để chống trùng. Race hiếm
+  // (2 request subscribe cùng lúc từ đúng 1 thiết bị) có thể tạo dư 1 dòng, không phải lỗi
+  // nghiêm trọng — nâng cấp lên unique index nếu sau này cần chống race tuyệt đối.
 
   console.log('Hoàn tất — PushSubscriptions giờ hỗ trợ nhiều thiết bị/user.');
   process.exit(0);
