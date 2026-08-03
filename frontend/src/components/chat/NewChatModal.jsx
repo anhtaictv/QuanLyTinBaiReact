@@ -17,7 +17,7 @@ const NewChatModal = ({ currentUserId, currentUserRole, onClose, onCreated }) =>
   useEffect(() => {
     getBasicUsers().then(res => {
       setUsers((res.data || []).filter(u => u.UserID !== currentUserId));
-    }).catch(() => setUsers([]));
+    }).catch(() => setError('Không tải được danh sách người dùng!'));
   }, [currentUserId]);
 
   const toggleSelect = (userId) => {

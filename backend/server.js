@@ -143,7 +143,7 @@ app.get('/api/users/basic', verifyToken, async (req, res) => {
         res.json(result.recordset);
     } catch (err) {
         logError({ source: 'server./api/users/basic', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 });
 
@@ -157,7 +157,7 @@ app.get('/api/users', verifyToken, isAdmin, async (req, res) => {
         res.json(result.recordset);
     } catch (err) {
         logError({ source: 'server./api/users', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 });
 
@@ -187,7 +187,7 @@ app.put('/api/users/:userId/role', verifyToken, isAdmin, async (req, res) => {
         res.json({ success: true, message: 'Cập nhật quyền thành công!' });
     } catch (err) {
         logError({ source: 'server./api/users/:userId/role', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 });
 
@@ -201,7 +201,7 @@ app.delete('/api/users/:userId', verifyToken, isAdmin, async (req, res) => {
         res.json({ success: true, message: 'Đã xóa người dùng!' });
     } catch (err) {
         logError({ source: 'server./api/users/:userId DELETE', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 });
 
@@ -210,7 +210,7 @@ app.use((err, req, res, next) => {
     console.error('❌ [Unhandled]', err);
     logError({ source: 'server.unhandled', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
     if (res.headersSent) return next(err);
-    res.status(500).json({ error: err.message || 'Lỗi server không xác định' });
+    res.status(500).json({ error: 'Lỗi server không xác định' });
 });
 
 // Khởi chạy

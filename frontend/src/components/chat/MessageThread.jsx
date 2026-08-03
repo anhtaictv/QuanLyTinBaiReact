@@ -244,7 +244,9 @@ const MessageThread = ({ conversation, currentUserId, socket }) => {
 
   const handleSend = (text, files) => {
     socket.emit('message:send', { conversationId, content: text || (files.length ? '[Đính kèm]' : '') }, async (ack) => {
-      if (ack?.error) return;
+      // Trước đây chỉ return, im lặng — ô soạn tin đã tự xoá nội dung ngay khi bấm gửi
+      // (optimistic clear ở MessageComposer) nên user không biết tin nhắn đã bị từ chối.
+      if (ack?.error) { showToastError(ack.error); return; }
       const messageId = ack?.message?.MessageID;
       if (messageId && files.length) {
         for (const file of files) {

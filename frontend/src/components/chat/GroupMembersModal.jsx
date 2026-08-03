@@ -9,7 +9,8 @@ const GroupMembersModal = ({ conversationId, currentUserId, isAdmin, onClose }) 
   const [error, setError] = useState('');
 
   const load = () => {
-    getMembers(conversationId).then(res => setMembers(res.data || [])).catch(() => {});
+    getMembers(conversationId).then(res => setMembers(res.data || []))
+      .catch(() => setError('Không tải được danh sách thành viên!'));
   };
 
   useEffect(() => {

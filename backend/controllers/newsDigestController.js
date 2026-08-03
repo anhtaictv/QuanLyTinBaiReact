@@ -37,7 +37,7 @@ exports.getDigest = async (req, res) => {
         });
     } catch (err) {
         logError({ source: 'newsDigestController.getDigest', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -49,6 +49,6 @@ exports.refreshNow = async (req, res) => {
         res.json({ success: true, matched, inserted, sourceErrors });
     } catch (err) {
         logError({ source: 'newsDigestController.refreshNow', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };

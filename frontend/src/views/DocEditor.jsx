@@ -21,11 +21,13 @@ const DocEditor = () => {
   const [elapsed,     setElapsed]     = useState(0);
 
   // ── 1. Khi mở → fetch bài viết → upload lên Drive ─────────────────────────
+  // Deps đầy đủ [postId, uploadToDrive] (thay vì [] trước đây) — nếu điều hướng trực tiếp
+  // giữa 2 URL doc-editor khác nhau mà component không unmount, effect [] chỉ chạy 1 lần
+  // ở lần mount đầu và giữ nguyên dữ liệu của postId CŨ, không tải lại theo postId mới.
   useEffect(() => {
     if (!postId) { setErrorMsg('Không tìm thấy ID bài viết!'); setStatus('error'); return; }
     uploadToDrive();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [postId, uploadToDrive]);
 
   // ── 2. Đồng hồ đếm giây ───────────────────────────────────────────────────
   useEffect(() => {
@@ -34,7 +36,7 @@ const DocEditor = () => {
     return () => clearInterval(t);
   }, [status]);
 
-  const uploadToDrive = async () => {
+  const uploadToDrive = useCallback(async () => {
     setStatus('loading');
     try {
       // Lấy thông tin bài viết
@@ -65,7 +67,7 @@ const DocEditor = () => {
       setErrorMsg('Lỗi upload Drive: ' + (err.response?.data?.error || err.message));
       setStatus('error');
     }
-  };
+  }, [postId]);
 
   // ── 3. Hoàn thành → export về VPS, ghi đè file cũ ────────────────────────
   const handleComplete = useCallback(async () => {

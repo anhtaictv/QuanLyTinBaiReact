@@ -34,14 +34,16 @@ const NewsList = () => {
   // Gõ tìm kiếm khoan hẵng gọi API ngay — đợi người dùng ngừng gõ 400ms rồi mới fetch,
   // tránh bắn 1 request mỗi phím bấm.
   useEffect(() => {
-    const t = setTimeout(() => setSearchTerm(searchInput), 400);
+    const t = setTimeout(() => {
+      // setPage(1) đặt CÙNG lượt với setSearchTerm (không phải effect riêng nghe searchTerm)
+      // để 2 state cùng đổi trong 1 lần render — trước đây tách effect riêng khiến fetchData
+      // (useCallback phụ thuộc page+searchTerm) chạy 1 lần với searchTerm mới nhưng page CŨ
+      // (vì setPage(1) chưa kịp áp dụng), bắn 1 request sai trang trước khi có request đúng.
+      setSearchTerm(searchInput);
+      setPage(1);
+    }, 400);
     return () => clearTimeout(t);
   }, [searchInput]);
-
-  // Đổi bộ lọc/tìm kiếm/ngày thì quay về trang 1
-  useEffect(() => {
-    setPage(1);
-  }, [filter, searchTerm, dateRange.start, dateRange.end]);
 
   // Lấy dữ liệu từ VPS — lọc/tìm kiếm/phân trang đều thực hiện ở server (bảng có thể
   // lớn dần, không kéo hết về client mỗi lần tải trang nữa).
@@ -69,34 +71,45 @@ const NewsList = () => {
     fetchData();
   }, [fetchData]);
 
+  // actioningId chặn double-click bắn 2 request PUT/DELETE trùng lên cùng 1 bài trong lúc
+  // request trước còn đang chạy (các nút này trước đây không disable khi đang xử lý).
+  const [actioningId, setActioningId] = useState(null);
+
   // Thao tác sửa đổi trạng thái bài viết
   const handleApprove = async (postId) => {
+    setActioningId(postId);
     try {
       await api.put(`/news/${postId}/status`, { status: 2 });
       alert("Đã phê duyệt thành công!");
       fetchData();
     } catch (err) { alert("Lỗi duyệt bài!"); }
+    finally { setActioningId(null); }
   };
 
   const handleReject = async (postId) => {
     if (window.confirm("Xác nhận: Từ chối bài này?")) {
+      setActioningId(postId);
       try {
         await api.put(`/news/${postId}/status`, { status: 3 });
         alert("Đã từ chối bài!");
         fetchData();
       } catch (err) { alert("Lỗi từ chối!"); }
+      finally { setActioningId(null); }
     }
   };
 
   const handleLock = async (postId, currentLockStatus) => {
+    setActioningId(postId);
     try {
       await api.post(`/news/${postId}/lock`, { lock: !currentLockStatus });
       fetchData();
     } catch (err) { alert("Lỗi khóa/mở bài!"); }
+    finally { setActioningId(null); }
   };
 
   const handleDelete = async (postId, title) => {
     if (window.confirm(`Xác nhận: Bạn có chắc chắn muốn xóa bài viết "${title}"?`)) {
+      setActioningId(postId);
       try {
         await api.delete(`/news/${postId}`);
         alert("Đã xóa bài viết thành công!");
@@ -105,6 +118,7 @@ const NewsList = () => {
         console.error("Lỗi xóa bài:", err);
         alert("Không thể xóa bài viết. Lỗi: " + (err.response?.data?.error || "Lỗi kết nối"));
       }
+      finally { setActioningId(null); }
     }
   };
 
@@ -127,8 +141,8 @@ const NewsList = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <h2 style={{ fontSize: 22 }}>Quản lý Tin Bài</h2>
         <div style={{ display: 'flex', gap: '6px' }}>
-          <button onClick={() => setFilter('all')} style={filterBtnStyle(filter === 'all', 'var(--accent)')}>Tất cả</button>
-          <button onClick={() => setFilter('pending')} style={filterBtnStyle(filter === 'pending', 'var(--warning)')}>Chờ duyệt</button>
+          <button onClick={() => { setFilter('all'); setPage(1); }} style={filterBtnStyle(filter === 'all', 'var(--accent)')}>Tất cả</button>
+          <button onClick={() => { setFilter('pending'); setPage(1); }} style={filterBtnStyle(filter === 'pending', 'var(--warning)')}>Chờ duyệt</button>
         </div>
       </div>
 
@@ -148,13 +162,13 @@ const NewsList = () => {
           <input
             type="date"
             style={{ padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', flex: 1 }}
-            onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+            onChange={(e) => { setDateRange({ ...dateRange, start: e.target.value }); setPage(1); }}
           />
           <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Đến:</span>
           <input
             type="date"
             style={{ padding: '8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', flex: 1 }}
-            onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+            onChange={(e) => { setDateRange({ ...dateRange, end: e.target.value }); setPage(1); }}
           />
         </div>
       </div>
@@ -196,17 +210,17 @@ const NewsList = () => {
                     <td style={{ padding: '12px' }}>
                       {canApproveOrReject && (pStatus === 1 || pStatus === 0) && (
                         <>
-                          <button onClick={() => handleApprove(pID)} style={actionBtnStyle('var(--success)')}><IconCheckCircle size={13} />Duyệt</button>
-                          <button onClick={() => handleReject(pID)} style={actionBtnStyle('var(--warning)')}><IconXCircle size={13} />Từ chối</button>
+                          <button disabled={actioningId === pID} onClick={() => handleApprove(pID)} style={actionBtnStyle('var(--success)')}><IconCheckCircle size={13} />Duyệt</button>
+                          <button disabled={actioningId === pID} onClick={() => handleReject(pID)} style={actionBtnStyle('var(--warning)')}><IconXCircle size={13} />Từ chối</button>
                         </>
                       )}
                       {canLockOrUnlock && (
-                        <button onClick={() => handleLock(pID, pLocked)} style={actionBtnStyle(pLocked ? 'var(--surface-2)' : 'var(--sidebar-bg)', pLocked ? 'var(--text)' : '#fff')}>
+                        <button disabled={actioningId === pID} onClick={() => handleLock(pID, pLocked)} style={actionBtnStyle(pLocked ? 'var(--surface-2)' : 'var(--sidebar-bg)', pLocked ? 'var(--text)' : '#fff')}>
                           {pLocked ? <IconUnlock size={13} /> : <IconLock size={13} />}{pLocked ? 'Mở' : 'Khóa'}
                         </button>
                       )}
                       {canDeletePost && (
-                        <button onClick={() => handleDelete(pID, pTitle)} style={actionBtnStyle('var(--danger)')}><IconTrash size={13} />Xóa</button>
+                        <button disabled={actioningId === pID} onClick={() => handleDelete(pID, pTitle)} style={actionBtnStyle('var(--danger)')}><IconTrash size={13} />Xóa</button>
                       )}
                     </td>
                   </tr>

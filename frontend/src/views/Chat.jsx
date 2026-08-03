@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getConversations } from '../services/chatService';
 import { useChatSocket } from '../hooks/useChatSocket';
@@ -17,6 +17,9 @@ const Chat = () => {
   const currentUserId = userObj.UserID;
   const currentUserRole = userObj.Role || userObj.role;
 
+  const conversationsRef = useRef(conversations);
+  useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
+
   const fetchConversations = () => {
     getConversations().then(res => setConversations(res.data || [])).catch(() => {});
   };
@@ -27,19 +30,20 @@ const Chat = () => {
 
   useEffect(() => {
     const handleNewMessage = (message) => {
-      setConversations(prev => {
-        const exists = prev.some(c => c.ConversationID === message.ConversationID);
-        if (!exists) {
-          fetchConversations();
-          return prev;
-        }
-        return prev
-          .map(c => c.ConversationID === message.ConversationID
-            ? { ...c, LastMessage: message.Content, LastMessageAt: message.CreatedAt, UnreadCount: message.ConversationID === Number(conversationId) ? 0 : (c.UnreadCount || 0) + 1 }
-            : c
-          )
-          .sort((a, b) => new Date(b.LastMessageAt) - new Date(a.LastMessageAt));
-      });
+      // Không gọi fetchConversations() (side-effect network) trong updater truyền cho
+      // setState — dễ bắn trùng request nếu React gọi lại updater. Check "exists" qua ref.
+      const exists = conversationsRef.current.some(c => c.ConversationID === message.ConversationID);
+      if (!exists) {
+        fetchConversations();
+        return;
+      }
+      setConversations(prev => prev
+        .map(c => c.ConversationID === message.ConversationID
+          ? { ...c, LastMessage: message.Content, LastMessageAt: message.CreatedAt, UnreadCount: message.ConversationID === Number(conversationId) ? 0 : (c.UnreadCount || 0) + 1 }
+          : c
+        )
+        .sort((a, b) => new Date(b.LastMessageAt) - new Date(a.LastMessageAt))
+      );
     };
     const handlePresence = ({ userId, online }) => {
       setConversations(prev => prev.map(c => c.OtherMemberID === userId ? { ...c, OtherMemberOnline: online } : c));

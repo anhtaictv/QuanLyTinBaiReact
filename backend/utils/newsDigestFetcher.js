@@ -116,6 +116,13 @@ async function saveItems(items) {
         const normTitle = normalizeTitleForDedup(it.title);
         if (normTitle && seenTitles.has(normTitle)) continue;
 
+        // RSS đôi khi cho pubDate/isoDate dạng không parse được -> new Date() ra Invalid Date,
+        // driver mssql lỗi khi bind sql.DateTime với giá trị đó. Trước đây lỗi này không khớp
+        // regex trùng-khóa bên dưới nên bị throw giữa loop, làm mất luôn các bài HỢP LỆ còn lại
+        // trong cùng lượt fetch. Validate trước, coi ngày hỏng như "không có" thay vì để insert lỗi.
+        const publishedAt = it.publishedAt ? new Date(it.publishedAt) : null;
+        const validPublishedAt = publishedAt && !isNaN(publishedAt.getTime()) ? publishedAt : null;
+
         try {
             await pool.request()
                 .input('Title', sql.NVarChar(500), it.title.slice(0, 500))
@@ -123,7 +130,7 @@ async function saveItems(items) {
                 .input('SourceName', sql.NVarChar(200), it.sourceName)
                 .input('Summary', sql.NVarChar(sql.MAX), it.summary)
                 .input('Keyword', sql.NVarChar(100), it.keyword)
-                .input('PublishedAt', sql.DateTime, it.publishedAt ? new Date(it.publishedAt) : null)
+                .input('PublishedAt', sql.DateTime, validPublishedAt)
                 .input('NormTitle', sql.NVarChar(500), normTitle.slice(0, 500))
                 .query(`
                     INSERT INTO dbo.NewsDigestItems (Title, Link, SourceName, Summary, Keyword, PublishedAt, NormTitle)

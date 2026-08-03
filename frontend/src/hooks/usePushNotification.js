@@ -76,8 +76,11 @@ export function usePushNotification() {
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
+      const endpoint = sub?.endpoint;
       if (sub) await sub.unsubscribe();
-      await api.post('/push/unsubscribe');
+      // Gửi endpoint để backend chỉ xoá subscription của THIẾT BỊ NÀY — thiếu endpoint thì
+      // backend trước đây xoá theo UserID, tắt thông báo ở máy này tắt luôn ở mọi máy khác.
+      await api.post('/push/unsubscribe', { endpoint });
       setSubscribed(false);
     } catch (err) {
       console.error('❌ Push unsubscribe lỗi:', err);

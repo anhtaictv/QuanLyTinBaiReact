@@ -87,21 +87,28 @@ const PostDetail = () => {
   };
 
   // ── PHÊ DUYỆT ─────────────────────────────────────────────────────────────
+  // Chặn double-click bắn 2 request PUT trùng (nút trước đây không disable khi đang xử lý).
+  const [processing, setProcessing] = useState(false);
+
   const handleApprove = async () => {
+    if (processing) return;
+    setProcessing(true);
     try {
       await api.put(`/news/${id}/status`, { status: 2 });
       showToastSuccess('Đã phê duyệt!');
       setTimeout(() => navigate('/news'), 1000);
-    } catch { showToastError('Lỗi khi phê duyệt!'); }
+    } catch { showToastError('Lỗi khi phê duyệt!'); setProcessing(false); }
   };
 
   const handleReject = async () => {
+    if (processing) return;
     if (!window.confirm('Xác nhận từ chối bài này?')) return;
+    setProcessing(true);
     try {
       await api.put(`/news/${id}/status`, { status: 3 });
       showToastSuccess('Đã từ chối!');
       setTimeout(() => navigate('/news'), 1000);
-    } catch { showToastError('Lỗi khi từ chối!'); }
+    } catch { showToastError('Lỗi khi từ chối!'); setProcessing(false); }
   };
 
   if (!post) return <LoadingState label="Đang tải bài viết..." />;
@@ -191,8 +198,8 @@ const PostDetail = () => {
           {/* Nút duyệt/từ chối */}
           {statusID === 1 && (
             <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-              <button onClick={handleApprove} style={btn('var(--success)')}><IconCheckCircle size={14} />Duyệt Thông Qua</button>
-              <button onClick={handleReject}  style={btn('var(--warning)')}><IconXCircle size={14} />Từ Chối</button>
+              <button disabled={processing} onClick={handleApprove} style={btn('var(--success)')}><IconCheckCircle size={14} />Duyệt Thông Qua</button>
+              <button disabled={processing} onClick={handleReject}  style={btn('var(--warning)')}><IconXCircle size={14} />Từ Chối</button>
             </div>
           )}
 

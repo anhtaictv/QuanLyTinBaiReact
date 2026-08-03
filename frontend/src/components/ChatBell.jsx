@@ -22,7 +22,10 @@ const ChatBell = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const openConversationIdRef = useRef(null);
+  const conversationsRef = useRef(conversations);
   const currentUserId = (JSON.parse(localStorage.getItem('user')) || {}).UserID;
+
+  useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
 
   useEffect(() => {
     const match = location.pathname.match(/^\/chat\/(\d+)/);
@@ -51,17 +54,19 @@ const ChatBell = () => {
       const isViewingThisConversation = openConversationIdRef.current === message.ConversationID;
       const shouldCountUnread = !isOwnMessage && !isViewingThisConversation;
 
-      setConversations(prev => {
-        const exists = prev.some(c => c.ConversationID === message.ConversationID);
-        if (!exists) {
-          fetchConversations();
-          return prev;
-        }
-        return prev.map(c => c.ConversationID === message.ConversationID
+      // Không gọi fetchConversations() (side-effect network) từ trong updater truyền cho
+      // setState — React có thể gọi lại updater nhiều lần (StrictMode dev, bail-out
+      // re-render), bắn trùng request. Check "exists" qua ref giữ snapshot mới nhất thay vì
+      // đọc trong updater.
+      const exists = conversationsRef.current.some(c => c.ConversationID === message.ConversationID);
+      if (!exists) {
+        fetchConversations();
+      } else {
+        setConversations(prev => prev.map(c => c.ConversationID === message.ConversationID
           ? { ...c, LastMessage: message.Content, UnreadCount: shouldCountUnread ? (c.UnreadCount || 0) + 1 : (isOwnMessage ? c.UnreadCount : 0) }
           : c
-        );
-      });
+        ));
+      }
 
       if (!shouldCountUnread) return;
 

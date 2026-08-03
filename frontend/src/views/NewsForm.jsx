@@ -38,6 +38,10 @@ const NewsForm = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Chặn double-submit ngay từ đầu — trước đây setSubmitting(true) chỉ nằm trong
+    // submitNews(), nên trong lúc chờ scanSensitive (gọi AI, có thể mất vài giây) nút Gửi
+    // vẫn bấm được, bấm đúp là tạo 2 bài trùng + upload file 2 lần.
+    if (submitting) return;
     setError('');
 
     if (!formData.tieuDe.trim()) {
@@ -49,6 +53,8 @@ const NewsForm = () => {
       return;
     }
 
+    setSubmitting(true);
+
     // Kiểm tra dữ liệu nhạy cảm trước khi gửi — nếu AI local chưa kết nối, bỏ qua bước
     // này êm và gửi bài như bình thường (không chặn công việc vì thiếu AI).
     const textToScan = [formData.tieuDe, formData.sapo, formData.noiDung].filter(Boolean).join('\n\n');
@@ -57,6 +63,7 @@ const NewsForm = () => {
         const { data } = await scanSensitive(textToScan);
         if (data.piiMatches?.length > 0 || data.wordingWarnings?.length > 0) {
           setSensitiveResult(data);
+          setSubmitting(false);
           return;
         }
       } catch {

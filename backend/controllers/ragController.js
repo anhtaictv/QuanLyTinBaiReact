@@ -7,7 +7,7 @@ function handleRagError(err, req, res, source) {
         return res.status(503).json({ error: err.message, connected: false });
     }
     logError({ source, message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
 }
 
 exports.ingest = async (req, res) => {
