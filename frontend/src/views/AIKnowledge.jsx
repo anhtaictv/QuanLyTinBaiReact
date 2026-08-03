@@ -4,7 +4,7 @@ import { showToastSuccess } from '../utils/Toast';
 import { IconRobot, IconLoader, IconTrash, IconAlertCircle } from '../components/icons';
 
 // Trang quản trị kho tri thức RAG (module 4): nạp văn bản quy định biên tập/luật báo
-// chí bằng cách dán tiêu đề + nội dung (chunk + embed qua Ollama), dùng cho AIBell
+// chí bằng cách dán tiêu đề + nội dung (chunk + embed qua AI Gateway), dùng cho AIBell
 // hỏi-đáp. Chỉ admin/trưởng ban/thư ký vào được (khớp AdminRoute trong App.jsx và
 // requireRoles ở backend routes/aiRoutes.js).
 const AIKnowledge = () => {

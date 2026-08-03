@@ -1,15 +1,15 @@
-const ollama = require('../services/ollamaClient');
+const aiGateway = require('../services/aiGatewayClient');
 const { logError } = require('../utils/errorLogger');
 
 // Danh mục hiện có trên form soạn bài (NewsForm.jsx) — giữ khớp để gợi ý category
 // luôn map được vào dropdown có sẵn, không cần thêm danh mục mới.
 const CATEGORIES = ['Chưa phân loại', 'ANTT', 'AN247', 'Kinh tế', 'Xã hội'];
 
-// AI local (Ollama) có thể chưa được cấu hình/chưa chạy — đây là trạng thái BÌNH
-// THƯỜNG cho tới khi người dùng trỏ OLLAMA_BASE_URL sang máy thật, nên không log vào
-// ErrorLogs/Telegram (sẽ gây nhiễu báo lỗi). Chỉ log các lỗi thật sự bất ngờ khác.
+// AI Gateway có thể chưa deploy/chưa chạy — đây là trạng thái BÌNH THƯỜNG cho tới khi
+// gateway lên VPS thật, nên không log vào ErrorLogs/Telegram (sẽ gây nhiễu báo lỗi).
+// Chỉ log các lỗi thật sự bất ngờ khác.
 function handleAiError(err, req, res, source) {
-    if (err instanceof ollama.OllamaUnavailableError) {
+    if (err instanceof aiGateway.AiGatewayUnavailableError) {
         return res.status(503).json({ error: err.message, connected: false });
     }
     logError({ source, message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
@@ -27,15 +27,15 @@ function extractJson(raw) {
 }
 
 exports.health = async (req, res) => {
-    const connected = await ollama.isAvailable();
-    res.json({ connected, chatModel: ollama.CHAT_MODEL, embedModel: ollama.EMBED_MODEL });
+    const connected = await aiGateway.isAvailable();
+    res.json({ connected });
 };
 
 exports.proofread = async (req, res) => {
     const { text } = req.body;
     if (!text || !text.trim()) return res.status(400).json({ error: 'Thiếu nội dung cần sửa.' });
     try {
-        const result = await ollama.chat([
+        const result = await aiGateway.chat([
             { role: 'system', content: 'Bạn là biên tập viên báo chí tiếng Việt. Sửa lỗi chính tả, ngữ pháp, câu từ lủng củng và chuẩn hóa văn phong sang chuẩn báo chí/tuyên truyền công vụ. Chỉ trả về đúng đoạn văn đã sửa, không giải thích, không thêm ghi chú.' },
             { role: 'user', content: text }
         ]);
@@ -49,7 +49,7 @@ exports.suggestHeadlines = async (req, res) => {
     const { content } = req.body;
     if (!content || !content.trim()) return res.status(400).json({ error: 'Thiếu nội dung bài viết.' });
     try {
-        const raw = await ollama.chat([
+        const raw = await aiGateway.chat([
             { role: 'system', content: 'Bạn là biên tập viên báo chí tiếng Việt. Dựa vào nội dung bài viết, đưa ra 5 gợi ý tiêu đề (đa dạng: chuẩn chính luận, chuẩn SEO, giật gân hợp lý). Trả về DUY NHẤT một mảng JSON các chuỗi, ví dụ: ["Tiêu đề 1","Tiêu đề 2"]. Không thêm chữ nào khác.' },
             { role: 'user', content }
         ]);
@@ -65,7 +65,7 @@ exports.summarize = async (req, res) => {
     const { content } = req.body;
     if (!content || !content.trim()) return res.status(400).json({ error: 'Thiếu nội dung bài viết.' });
     try {
-        const result = await ollama.chat([
+        const result = await aiGateway.chat([
             { role: 'system', content: 'Bạn là biên tập viên báo chí tiếng Việt. Tóm tắt nội dung sau thành đoạn Sapo 2-3 câu, súc tích, đủ ý chính. Chỉ trả về đoạn Sapo, không giải thích.' },
             { role: 'user', content }
         ]);
@@ -79,7 +79,7 @@ exports.categorize = async (req, res) => {
     const { content } = req.body;
     if (!content || !content.trim()) return res.status(400).json({ error: 'Thiếu nội dung bài viết.' });
     try {
-        const raw = await ollama.chat([
+        const raw = await aiGateway.chat([
             {
                 role: 'system',
                 content: `Bạn là biên tập viên báo chí tiếng Việt tại Đắk Lắk. Đọc nội dung và trả về DUY NHẤT một object JSON dạng:
@@ -101,7 +101,7 @@ exports.categorize = async (req, res) => {
 
 // --- Module 3: kiểm duyệt & bảo mật thông tin ---
 
-// Regex trước — chạy được kể cả Ollama tắt, đáng tin cậy hơn LLM cho dữ liệu có cấu trúc.
+// Regex trước — chạy được kể cả AI Gateway tắt, đáng tin cậy hơn LLM cho dữ liệu có cấu trúc.
 const PII_PATTERNS = [
     { label: 'Số CMND/CCCD', re: /\b\d{9}(\d{3})?\b/g },
     { label: 'Số điện thoại', re: /\b(0|\+84)(\d{9,10})\b/g },
@@ -124,15 +124,15 @@ exports.scanSensitive = async (req, res) => {
     const piiMatches = scanPii(text);
     let wordingWarnings = [];
     try {
-        const raw = await ollama.chat([
+        const raw = await aiGateway.chat([
             { role: 'system', content: 'Bạn kiểm duyệt biên tập báo chí Việt Nam. Rà soát đoạn văn sau, liệt kê các từ/cụm từ có thể vi phạm quy định biên tập hoặc chưa đúng chuẩn mực ngôn luận (ví dụ: suy đoán chưa kiểm chứng, ngôn từ kích động, tiết lộ đời tư không cần thiết). Trả về DUY NHẤT một mảng JSON các chuỗi ngắn mô tả từng vấn đề (mảng rỗng [] nếu không có vấn đề gì). Không thêm chữ nào khác.' },
             { role: 'user', content: text }
         ]);
         const parsed = extractJson(raw);
         if (Array.isArray(parsed)) wordingWarnings = parsed.filter(w => typeof w === 'string').slice(0, 20);
     } catch (err) {
-        // Ollama chưa sẵn sàng: vẫn trả kết quả regex, chỉ bỏ qua phần LLM.
-        if (!(err instanceof ollama.OllamaUnavailableError)) {
+        // AI Gateway chưa sẵn sàng: vẫn trả kết quả regex, chỉ bỏ qua phần LLM.
+        if (!(err instanceof aiGateway.AiGatewayUnavailableError)) {
             logError({ source: 'aiController.scanSensitive(llm)', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         }
     }

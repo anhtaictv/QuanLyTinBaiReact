@@ -6,7 +6,7 @@ import { useDropdownPosition } from '../hooks/useDropdownPosition';
 const PANEL_WIDTH = 340;
 
 // Icon nổi mở panel hỏi-đáp RAG (module 4 - tra cứu văn bản quy định nội bộ). Chấm
-// trạng thái xanh/xám lấy từ /ai/health — cho biết AI local (Ollama) có đang kết nối
+// trạng thái xanh/xám lấy từ /ai/health — cho biết AI Gateway có đang kết nối
 // được không, để người dùng không bối rối khi bấm hỏi mà không có phản hồi.
 const AIBell = () => {
   const [open, setOpen] = useState(false);
@@ -62,7 +62,7 @@ const AIBell = () => {
         }}
       >
         <IconRobot size={16} />
-        <span title={connected ? 'AI local: đã kết nối' : 'AI local: chưa kết nối'} style={{
+        <span title={connected ? 'AI: đã kết nối' : 'AI: chưa kết nối'} style={{
           position: 'absolute', bottom: -2, right: -2, width: 9, height: 9, borderRadius: '50%',
           background: connected ? 'var(--success)' : 'var(--text-muted)', border: '1.5px solid var(--sidebar-bg, #1a1a1a)'
         }} />

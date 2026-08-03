@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const ollama = require('./ollamaClient');
+const aiGateway = require('./aiGatewayClient');
 
 const INDEX_PATH = path.join(__dirname, '../data/rag-index.json');
 const CHUNK_SIZE = 800;
@@ -59,7 +59,7 @@ async function addDocument(title, text) {
     const index = loadIndex();
     const createdAt = new Date().toISOString();
     for (const chunk of chunks) {
-        const embedding = await ollama.embed(chunk);
+        const embedding = await aiGateway.embed(chunk);
         index.push({ id: crypto.randomUUID(), sourceId, title, chunk, embedding, createdAt });
     }
     saveIndex(index);
