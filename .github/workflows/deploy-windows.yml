@@ -73,6 +73,7 @@ jobs:
           foreach ($script in @('scripts/create-news-digest-table.js', 'scripts/add-device-to-push-subscriptions.js')) {
             Write-Output "Running migration: $script"
             $proc = Start-Process -FilePath "node" -ArgumentList $script -NoNewWindow -PassThru
+            $proc.Handle | Out-Null   # bat buoc .NET cache handle ngay, khong ExitCode doc ra rong sau khi exit
             if (-not $proc.WaitForExit(60000)) {
               try { $proc.Kill() } catch {}
               throw "Migration '$script' timed out sau 60s (DB co the chua san sang)"
