@@ -16,8 +16,6 @@ function formatDate(value) {
 
 const NewsDigest = () => {
     const [items, setItems] = useState([]);
-    const [sources, setSources] = useState([]);
-    const [sourceFilter, setSourceFilter] = useState('');
     const [lastFetchedAt, setLastFetchedAt] = useState(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -25,18 +23,15 @@ const NewsDigest = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const params = {};
-            if (sourceFilter) params.source = sourceFilter;
-            const res = await api.get('/news-digest', { params });
+            const res = await api.get('/news-digest');
             setItems(res.data.items || []);
-            setSources(res.data.sources || []);
             setLastFetchedAt(res.data.lastFetchedAt);
         } catch (err) {
             console.error('Lỗi khi tải tổng hợp tin:', err);
         } finally {
             setLoading(false);
         }
-    }, [sourceFilter]);
+    }, []);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -53,12 +48,6 @@ const NewsDigest = () => {
             setRefreshing(false);
         }
     };
-
-    const filterBtnStyle = (active) => ({
-        padding: '7px 14px', background: active ? 'var(--accent)' : 'var(--surface-2)',
-        color: active ? '#fff' : 'var(--text)', border: 'none', borderRadius: 'var(--radius-sm)',
-        cursor: 'pointer', fontSize: 13, fontWeight: 600
-    });
 
     if (loading) return <LoadingState label="Đang tải tổng hợp tin…" />;
 
@@ -85,15 +74,6 @@ const NewsDigest = () => {
                 chỉ mang tính tham khảo nhanh. Cập nhật lần gần nhất: {lastFetchedAt ? formatDate(lastFetchedAt) : 'chưa có dữ liệu'}.
             </p>
 
-            {sources.length > 0 && (
-                <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-                    <button onClick={() => setSourceFilter('')} style={filterBtnStyle(!sourceFilter)}>Tất cả nguồn</button>
-                    {sources.map(s => (
-                        <button key={s} onClick={() => setSourceFilter(s)} style={filterBtnStyle(sourceFilter === s)}>{s}</button>
-                    ))}
-                </div>
-            )}
-
             {items.length === 0 ? (
                 <div style={{
                     background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
@@ -114,14 +94,8 @@ const NewsDigest = () => {
                                 borderRadius: 'var(--radius-md)', padding: '14px 16px', textDecoration: 'none', color: 'inherit'
                             }}
                         >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
-                                <span style={{
-                                    fontSize: 11.5, fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-soft, rgba(0,0,0,0.06))',
-                                    padding: '3px 9px', borderRadius: 999
-                                }}>{item.SourceName}</span>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)' }}>
-                                    <IconClock size={12} />{formatDate(item.PublishedAt) || formatDate(item.FetchedAt)}
-                                </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+                                <IconClock size={12} />{formatDate(item.PublishedAt) || formatDate(item.FetchedAt)}
                             </div>
                             <div style={{ fontSize: 15, fontWeight: 600, marginBottom: item.Summary ? 6 : 0 }}>{item.Title}</div>
                             {item.Summary && (
