@@ -20,31 +20,9 @@ const DocEditor = () => {
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [elapsed,     setElapsed]     = useState(0);
 
-  // ── 1. Khi mở → fetch bài viết → upload lên Drive ─────────────────────────
-  // Deps đầy đủ [postId, uploadToDrive] (thay vì [] trước đây) — nếu điều hướng trực tiếp
-  // giữa 2 URL doc-editor khác nhau mà component không unmount, effect [] chỉ chạy 1 lần
-  // ở lần mount đầu và giữ nguyên dữ liệu của postId CŨ, không tải lại theo postId mới.
-  useEffect(() => {
-    if (!postId) { setErrorMsg('Không tìm thấy ID bài viết!'); setStatus('error'); return; }
-    uploadToDrive();
-  }, [postId, uploadToDrive]);
-
-  // ── 2. Đồng hồ đếm giây ───────────────────────────────────────────────────
-  useEffect(() => {
-    if (status !== 'ready') return;
-    const t = setInterval(() => setElapsed(s => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [status]);
-
-  // ── 2b. Google chặn nhúng URL /edit vào iframe của site khác (X-Frame-Options)
-  // → luôn tự mở tab mới thay vì hiển thị iframe trống.
-  useEffect(() => {
-    if (status === 'ready' && editUrl) {
-      window.open(editUrl, '_blank');
-      setIframeLoaded(true);
-    }
-  }, [status, editUrl]);
-
+  // uploadToDrive phải khai báo trước mọi useEffect tham chiếu nó trong deps
+  // array (deps được đọc ngay khi render, khai báo const ở dưới sẽ ReferenceError
+  // "cannot access before initialization" và sập toàn bộ app).
   const uploadToDrive = useCallback(async () => {
     setStatus('loading');
     try {
@@ -77,6 +55,28 @@ const DocEditor = () => {
       setStatus('error');
     }
   }, [postId]);
+
+  // ── 1. Khi mở → fetch bài viết → upload lên Drive ─────────────────────────
+  useEffect(() => {
+    if (!postId) { setErrorMsg('Không tìm thấy ID bài viết!'); setStatus('error'); return; }
+    uploadToDrive();
+  }, [postId, uploadToDrive]);
+
+  // ── 2. Đồng hồ đếm giây ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const t = setInterval(() => setElapsed(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [status]);
+
+  // ── 2b. Google chặn nhúng URL /edit vào iframe của site khác (X-Frame-Options)
+  // → luôn tự mở tab mới thay vì hiển thị iframe trống.
+  useEffect(() => {
+    if (status === 'ready' && editUrl) {
+      window.open(editUrl, '_blank');
+      setIframeLoaded(true);
+    }
+  }, [status, editUrl]);
 
   // ── 3. Hoàn thành → export về VPS, ghi đè file cũ ────────────────────────
   const handleComplete = useCallback(async () => {
