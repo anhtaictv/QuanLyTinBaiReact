@@ -18,3 +18,8 @@ export const listRagDocuments = () => api.get('/ai/rag/documents');
 export const ingestRagDocument = (title, content) => api.post('/ai/rag/documents', { title, content });
 export const deleteRagDocument = (sourceId) => api.delete(`/ai/rag/documents/${sourceId}`);
 export const askRag = (question) => api.post('/ai/rag/ask', { question });
+
+// Module 5: Trợ lý hỏi tự do (hội thoại nhiều lượt)
+// messages: [{ role: 'user' | 'assistant', content: string }] — gửi lại toàn bộ hội thoại
+// mỗi lượt vì backend không lưu trạng thái phiên chat.
+export const askAssistant = (messages) => api.post('/ai/chat', { messages });

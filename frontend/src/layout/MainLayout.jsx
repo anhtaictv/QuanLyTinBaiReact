@@ -10,7 +10,7 @@ import { ThemeContext } from '../context/ThemeContext';
 import {
   IconGrid, IconList, IconPlus, IconChat, IconKey, IconUsers, IconLogout,
   IconRefresh, IconBell, IconBellOff, IconMenu, IconX, IconSun, IconMoon, IconMail, IconNewspaper,
-  IconRobot
+  IconRobot, IconSparkles
 } from '../components/icons';
 
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 phút không hoạt động thì tự đăng xuất
@@ -240,6 +240,7 @@ const MainLayout = () => {
         <Link className="side-nav-link" to="/news"            style={menuStyle('/news')}            onClick={() => setSidebarOpen(false)}><IconList size={17}/>Danh sách tin</Link>
         <Link className="side-nav-link" to="/news/create"     style={menuStyle('/news/create')}     onClick={() => setSidebarOpen(false)}><IconPlus size={17}/>Gửi bài mới</Link>
         <Link className="side-nav-link" to="/news-digest"     style={menuStyle('/news-digest')}     onClick={() => setSidebarOpen(false)}><IconNewspaper size={17}/>Tổng hợp tin địa phương</Link>
+        <Link className="side-nav-link" to="/ai-assistant"    style={menuStyle('/ai-assistant')}    onClick={() => setSidebarOpen(false)}><IconSparkles size={17}/>Trợ lý AI</Link>
         <Link className="side-nav-link" to="/chat"            style={menuStyle('/chat')}            onClick={() => setSidebarOpen(false)}><IconChat size={17}/>Tin nhắn</Link>
         <Link className="side-nav-link" to="/change-password" style={menuStyle('/change-password')} onClick={() => setSidebarOpen(false)}><IconKey size={17}/>Đổi mật khẩu</Link>
 
