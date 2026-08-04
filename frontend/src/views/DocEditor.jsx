@@ -36,6 +36,15 @@ const DocEditor = () => {
     return () => clearInterval(t);
   }, [status]);
 
+  // ── 2b. Google chặn nhúng URL /edit vào iframe của site khác (X-Frame-Options)
+  // → luôn tự mở tab mới thay vì hiển thị iframe trống.
+  useEffect(() => {
+    if (status === 'ready' && editUrl) {
+      window.open(editUrl, '_blank');
+      setIframeLoaded(true);
+    }
+  }, [status, editUrl]);
+
   const uploadToDrive = useCallback(async () => {
     setStatus('loading');
     try {
@@ -184,30 +193,22 @@ const DocEditor = () => {
         </div>
       )}
 
-      {/* Iframe Google Docs */}
-      <div style={{ flex: 1, position: 'relative', background: 'var(--surface-2)' }}>
-        {!iframeLoaded && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', zIndex: 10, gap: 10 }}>
-            <IconFileText size={36} style={{ color: 'var(--text-muted)' }} />
-            <p style={{ color: 'var(--text)', fontSize: 14, margin: 0 }}>Đang tải Google Docs...</p>
-            <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>Nếu không hiện, bấm <strong>"Mở tab mới"</strong> ở trên</p>
-          </div>
-        )}
-        <iframe
-          src={editUrl}
-          title="Google Docs Editor"
-          width="100%" height="100%"
-          style={{ border: 'none', display: 'block' }}
-          onLoad={() => setIframeLoaded(true)}
-          allow="clipboard-read; clipboard-write"
-        />
+      {/* Google không cho nhúng iframe /edit → chỉ hiển thị hướng dẫn + nút mở lại */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-2)', gap: 14 }}>
+        <IconCheckCircle size={40} style={{ color: 'var(--success)' }} />
+        <p style={{ color: 'var(--text)', fontSize: 15, margin: 0, fontWeight: 600 }}>Đã mở Google Docs ở tab mới</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0, maxWidth: 420, textAlign: 'center' }}>
+          Google không cho phép nhúng trình chỉnh sửa vào trang này. Chỉnh sửa xong, quay lại đây và bấm <strong>"Hoàn thành &amp; Duyệt bài"</strong>.
+        </p>
+        <button onClick={() => window.open(editUrl, '_blank')} style={btnStyle('var(--accent)')}>
+          <IconExternalLink size={14} />Mở lại tab Google Docs
+        </button>
       </div>
 
       {/* Hướng dẫn dưới */}
       <div style={{ background: 'var(--surface-2)', padding: '8px 20px', fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 20, flexShrink: 0, borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><IconInfo size={13} />Google Docs tự động lưu khi bạn gõ.</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><IconCheckCircle size={13} />Bấm <strong>"Hoàn thành &amp; Duyệt bài"</strong> để lưu file về VPS và duyệt bài cho CTV.</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><IconExternalLink size={13} />Nếu iframe bị chặn, dùng <strong>"Mở tab mới"</strong>.</span>
       </div>
     </div>
   );
