@@ -12,7 +12,7 @@ router.get('/unread-count', async (req, res) => {
             .query('SELECT COUNT(*) as UnreadCount FROM dbo.ErrorLogs WHERE IsRead = 0');
         res.json({ count: result.recordset[0].UnreadCount });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 });
 
@@ -32,7 +32,7 @@ router.get('/', async (req, res) => {
             `);
         res.json(result.recordset);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 });
 
@@ -45,7 +45,7 @@ router.put('/:id/read', async (req, res) => {
             .query('UPDATE dbo.ErrorLogs SET IsRead = 1 WHERE ErrorID = @id');
         res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 });
 
@@ -56,7 +56,7 @@ router.put('/read-all', async (req, res) => {
         await pool.request().query('UPDATE dbo.ErrorLogs SET IsRead = 1 WHERE IsRead = 0');
         res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 });
 

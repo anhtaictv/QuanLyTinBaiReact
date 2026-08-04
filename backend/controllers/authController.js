@@ -176,7 +176,7 @@ exports.changePassword = async (req, res) => {
 
     } catch (err) {
         logError({ source: 'authController.changePassword', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -193,7 +193,7 @@ exports.getMyEmail = async (req, res) => {
         res.json({ success: true, email: result.recordset[0]?.Email || '' });
     } catch (err) {
         logError({ source: 'authController.getMyEmail', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -208,7 +208,7 @@ exports.updateMyEmail = async (req, res) => {
         res.json({ success: true, message: 'Cập nhật email thành công!' });
     } catch (err) {
         logError({ source: 'authController.updateMyEmail', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ success: false, message: err.message });
+        res.status(500).json({ success: false, message: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 

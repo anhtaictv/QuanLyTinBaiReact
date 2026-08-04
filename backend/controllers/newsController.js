@@ -84,7 +84,7 @@ exports.getAllNews = async (req, res) => {
         res.json({ posts: rows, total, page: pageNum, pageSize: sizeNum, totalPages: Math.ceil(total / sizeNum) });
     } catch (err) {
         logError({ source: 'newsController.getAllNews', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -151,7 +151,7 @@ exports.createNews = async (req, res) => {
     } catch (err) {
         console.error('❌ [createNews] Lỗi:', err.message);
         logError({ source: 'newsController.createNews', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -189,7 +189,7 @@ exports.getDashboardStats = async (req, res) => {
         res.json({ TotalPosts: totalPosts, PostsToday: postsToday, TotalUsers: usersResult.recordset[0].TotalUsers });
     } catch (err) {
         logError({ source: 'newsController.getDashboardStats', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -206,7 +206,7 @@ exports.deleteNews = async (req, res) => {
         res.json({ success: true, message: 'Đã xóa bài!' });
     } catch (err) {
         logError({ source: 'newsController.deleteNews', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -216,18 +216,27 @@ exports.deleteNews = async (req, res) => {
 exports.approveNews = async (req, res) => {
     const { id }     = req.params;
     const { status } = req.body;
+    // Chỉ 2 (duyệt) hoặc 3 (từ chối) hợp lệ ở route này — parseInt(status) || 1 trước đây
+    // biến status=0 thành 1 (do 0 là falsy trong JS) và không phân biệt "sai giá trị" với
+    // "không gửi status", dễ set nhầm StatusID nếu có API/script khác gọi route này.
+    const statusId = parseInt(status);
+    if (statusId !== 2 && statusId !== 3) {
+        return res.status(400).json({ error: 'Trạng thái không hợp lệ!' });
+    }
     try {
         const pool = await poolPromise;
-        await pool.request()
+        const result = await pool.request()
             .input('PostID',   id)
-            .input('StatusID', parseInt(status) || 1)
+            .input('StatusID', statusId)
             .query('UPDATE dbo.Posts SET StatusID = @StatusID WHERE PostID = @PostID');
-        const msg = parseInt(status) === 2 ? 'Đã phê duyệt!' : 'Đã từ chối!';
-        res.json({ success: true, message: msg });
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).json({ error: 'Không tìm thấy bài viết!' });
+        }
+        res.json({ success: true, message: statusId === 2 ? 'Đã phê duyệt!' : 'Đã từ chối!' });
     } catch (err) {
         console.error('❌ [approveNews] Lỗi:', err.message);
         logError({ source: 'newsController.approveNews', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -246,7 +255,7 @@ exports.lockNews = async (req, res) => {
         res.json({ success: true, message: lock ? 'Đã khóa bài!' : 'Đã mở bài!' });
     } catch (err) {
         logError({ source: 'newsController.lockNews', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -270,19 +279,22 @@ exports.editorApprove = async (req, res) => {
         const post = postResult.recordset[0];
         if (!post) return res.status(404).json({ error: 'Không tìm thấy bài viết' });
 
-        if (post.StoragePath) {
-            try {
-                const oldFullPath = path.resolve(STORAGE_ROOT, post.StoragePath.replace(/^Storage\//, ''));
-                if (fs.existsSync(oldFullPath)) fs.unlinkSync(oldFullPath);
-            } catch (e) { console.log('⚠️ Không xóa được file cũ:', e.message); }
-        }
-
+        // Cập nhật DB TRƯỚC, xóa file cũ SAU — trước đây xóa file cũ trước UPDATE, nên nếu
+        // UPDATE lỗi giữa chừng (deadlock, mất kết nối DB...) thì Posts.StoragePath vẫn trỏ
+        // tới file đã bị xóa vĩnh viễn, không còn đường phục hồi.
         await pool.request()
             .input('PostID',       id)
             .input('StoragePath',  storagePath)
             .input('EditorID',     editorId)
             .input('CategoryName', categoryName || null)
             .query(`UPDATE dbo.Posts SET StatusID=2, StoragePath=@StoragePath, EditorID=@EditorID, CategoryName=@CategoryName, IsLocked=0, LockedBy=NULL, ApprovedAt=GETDATE(), ApprovedBy=@EditorID WHERE PostID=@PostID`);
+
+        if (post.StoragePath) {
+            try {
+                const oldFullPath = path.resolve(STORAGE_ROOT, post.StoragePath.replace(/^Storage\//, ''));
+                if (fs.existsSync(oldFullPath)) fs.unlinkSync(oldFullPath);
+            } catch (e) { console.log('⚠️ Không xóa được file cũ:', e.message); }
+        }
 
         // ✅ Push thông báo cho CTV
         if (post.AuthorID) {
@@ -298,7 +310,7 @@ exports.editorApprove = async (req, res) => {
     } catch (err) {
         console.error('❌ [editorApprove] Lỗi:', err);
         logError({ source: 'newsController.editorApprove', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -325,7 +337,7 @@ exports.exportStoryboard = async (req, res) => {
     } catch (err) {
         console.error('❌ [exportStoryboard] Lỗi:', err);
         logError({ source: 'newsController.exportStoryboard', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: 'Lỗi xuất file Word: ' + err.message });
+        res.status(500).json({ error: 'Lỗi xuất file Word, vui lòng thử lại sau!' });
     }
 };
 
@@ -356,6 +368,6 @@ exports.exportNewsWord = async (req, res) => {
     } catch (err) {
         console.error('❌ [exportNewsWord] Lỗi:', err.message);
         logError({ source: 'newsController.exportNewsWord', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: 'Không thể xuất file Word: ' + err.message });
+        res.status(500).json({ error: 'Không thể xuất file Word, vui lòng thử lại sau!' });
     }
 };

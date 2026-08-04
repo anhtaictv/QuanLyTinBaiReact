@@ -106,7 +106,7 @@ exports.getConversations = async (req, res) => {
         res.json(conversations);
     } catch (err) {
         logError({ source: 'chatController.getConversations', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -176,7 +176,7 @@ exports.getMessages = async (req, res) => {
         res.json(withAttachments);
     } catch (err) {
         logError({ source: 'chatController.getMessages', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -243,7 +243,7 @@ exports.createConversation = async (req, res) => {
         res.json({ success: true, conversationId });
     } catch (err) {
         logError({ source: 'chatController.createConversation', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -277,7 +277,7 @@ exports.getMembers = async (req, res) => {
         res.json(result.recordset || []);
     } catch (err) {
         logError({ source: 'chatController.getMembers', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -290,6 +290,16 @@ exports.addMember = async (req, res) => {
         const requesterId = req.user.UserID;
         const conversationId = parseInt(req.params.id);
         const { userId } = req.body;
+
+        // Hội thoại 1-1 (IsGroup=0) không cho thêm thành viên — trước đây chỉ check IsAdmin,
+        // mà người tạo hội thoại 1-1 cũng được gán IsAdmin=1 nên có thể biến chat riêng
+        // thành nhóm nhiều người mà cờ IsGroup vẫn = 0, làm sai hiển thị OtherMemberName.
+        const conv = await pool.request()
+            .input('ConversationID', conversationId)
+            .query('SELECT IsGroup FROM dbo.Conversations WHERE ConversationID = @ConversationID');
+        if (!conv.recordset.length || !conv.recordset[0].IsGroup) {
+            return res.status(403).json({ error: 'Không thể thêm thành viên vào hội thoại 1-1!' });
+        }
 
         const perm = await pool.request()
             .input('ConversationID', conversationId)
@@ -318,7 +328,7 @@ exports.addMember = async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         logError({ source: 'chatController.addMember', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -331,6 +341,14 @@ exports.removeMember = async (req, res) => {
         const requesterId = req.user.UserID;
         const conversationId = parseInt(req.params.id);
         const targetUserId = parseInt(req.params.userId);
+
+        // Hội thoại 1-1 không cho xóa thành viên (chỉ có 2 người, xóa 1 người là phá vỡ chat).
+        const conv = await pool.request()
+            .input('ConversationID', conversationId)
+            .query('SELECT IsGroup FROM dbo.Conversations WHERE ConversationID = @ConversationID');
+        if (!conv.recordset.length || !conv.recordset[0].IsGroup) {
+            return res.status(403).json({ error: 'Không thể xóa thành viên khỏi hội thoại 1-1!' });
+        }
 
         // Cho phép: admin nhóm xóa người khác, hoặc tự rời nhóm.
         if (requesterId !== targetUserId) {
@@ -351,7 +369,7 @@ exports.removeMember = async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         logError({ source: 'chatController.removeMember', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -402,7 +420,7 @@ exports.uploadAttachment = async (req, res) => {
         res.json({ success: true, attachmentId, storedPath, isImage });
     } catch (err) {
         logError({ source: 'chatController.uploadAttachment', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -449,7 +467,7 @@ exports.downloadAttachment = async (req, res) => {
         res.sendFile(fullPath);
     } catch (err) {
         logError({ source: 'chatController.downloadAttachment', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -497,7 +515,7 @@ exports.editMessage = async (req, res) => {
         res.json({ success: true, message: updatedMessage });
     } catch (err) {
         logError({ source: 'chatController.editMessage', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -555,7 +573,7 @@ exports.recallMessage = async (req, res) => {
         res.json({ success: true, message: updatedMessage });
     } catch (err) {
         logError({ source: 'chatController.recallMessage', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 
@@ -596,7 +614,7 @@ exports.deleteMessageForMe = async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         logError({ source: 'chatController.deleteMessageForMe', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
 

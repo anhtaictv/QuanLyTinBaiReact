@@ -6,6 +6,13 @@ const path     = require('path');
 const { poolPromise } = require('../config/db');
 const { sendPushToUser } = require('./pushRoutes');
 const { logError } = require('../utils/errorLogger');
+const { requireRoles } = require('../middleware/authMiddleware');
+
+// Chỉ role được duyệt bài mới được đưa bài qua Google Docs / hoàn tất chỉnh sửa —
+// route này ghi đè file trên VPS và set StatusID=2 (duyệt), trước đây chỉ có
+// verifyToken nên bất kỳ user nào đăng nhập (kể cả CTV) gọi thẳng /complete với
+// postId của người khác là tự duyệt được bài, bỏ qua hẳn bước phê duyệt thật.
+const APPROVE_ROLES = ['admin', 'người duyệt', 'trưởng ban'];
 
 // ── CẤU HÌNH ──────────────────────────────────────────────────────────────────
 
@@ -114,7 +121,7 @@ function resolveLocalPath(storedPath) {
 // POST /api/drive/upload
 // ─────────────────────────────────────────────────────────────────────────────
 
-router.post('/upload', async (req, res) => {
+router.post('/upload', requireRoles(...APPROVE_ROLES), async (req, res) => {
   const { postId, storagePath, fileName } = req.body;
 
   if (!storagePath) return res.status(400).json({ error: 'Thiếu storagePath' });
@@ -175,7 +182,7 @@ router.post('/upload', async (req, res) => {
 // Export từ Drive → ghi đè VPS → đổi StatusID=2 → push CTV → xóa Drive
 // ─────────────────────────────────────────────────────────────────────────────
 
-router.post('/complete/:driveFileId', async (req, res) => {
+router.post('/complete/:driveFileId', requireRoles(...APPROVE_ROLES), async (req, res) => {
   const { driveFileId }         = req.params;
   const { postId, storagePath } = req.body;
 
@@ -236,7 +243,14 @@ router.post('/complete/:driveFileId', async (req, res) => {
         }
 
       } catch (dbErr) {
+        // Trước đây lỗi này chỉ log rồi vẫn xóa file Drive + trả success:true — nếu DB lỗi
+        // tạm thời (mất kết nối, deadlock) thì bài vẫn ở StatusID cũ (chưa duyệt) nhưng bản
+        // gốc trên Drive đã mất, không còn cách thử lại, mà client vẫn thấy "thành công".
+        // Giờ giữ nguyên file Drive (không xóa) và báo lỗi thật để bấm lại được — file trên
+        // VPS đã ghi đè xong nên nội dung mới không mất, chỉ chưa đổi được trạng thái duyệt.
         console.warn('⚠️ [Drive] Cập nhật DB thất bại:', dbErr.message);
+        logError({ source: 'driveRoutes.complete.dbUpdate', message: dbErr.message, stack: dbErr.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        return res.status(500).json({ error: 'Đã lưu file về VPS nhưng cập nhật trạng thái duyệt thất bại, vui lòng thử lại!' });
       }
     }
 
