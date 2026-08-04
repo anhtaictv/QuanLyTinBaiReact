@@ -1,4 +1,5 @@
 const aiGateway = require('../services/aiGatewayClient');
+const { normalizeConversation } = require('../utils/aiConversation');
 const { logError } = require('../utils/errorLogger');
 
 // Danh mục hiện có trên form soạn bài (NewsForm.jsx) — giữ khớp để gợi ý category
@@ -11,6 +12,12 @@ const CATEGORIES = ['Chưa phân loại', 'ANTT', 'AN247', 'Kinh tế', 'Xã h�
 function handleAiError(err, req, res, source) {
     if (err instanceof aiGateway.AiGatewayUnavailableError) {
         return res.status(503).json({ error: err.message, connected: false });
+    }
+    // Sai khoá là lỗi cấu hình của chính mình, KHÁC với "gateway chưa chạy": phải ghi log
+    // để còn biết mà sửa .env, nhưng không đổ lỗi kỹ thuật ra cho người dùng cuối.
+    if (err instanceof aiGateway.AiGatewayAuthError) {
+        logError({ source, message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        return res.status(503).json({ error: 'Trợ lý AI đang bị lỗi cấu hình, vui lòng báo quản trị viên.', connected: false });
     }
     logError({ source, message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
     res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
@@ -138,4 +145,40 @@ exports.scanSensitive = async (req, res) => {
     }
 
     res.json({ piiMatches, wordingWarnings });
+};
+
+// --- Module 5: Trợ lý hỏi đáp tự do ---
+
+// Khác 4 module trên (mỗi module bó vào đúng 1 tác vụ biên tập), đây là hội thoại mở:
+// hỏi gì cũng được. Vẫn giữ system prompt để chốt vai trò và cấm bịa — luật "luôn trả
+// lời tiếng Việt" do aiGatewayClient tự gắn nên không cần lặp lại ở đây.
+const ASSISTANT_SYSTEM_PROMPT = [
+    'Bạn là trợ lý AI trong hệ thống Quản lý Tin bài của một cơ quan báo chí tại Đắk Lắk.',
+    'Người dùng là phóng viên, biên tập viên và cộng tác viên. Họ có thể hỏi bạn BẤT KỲ chủ đề nào,',
+    'không giới hạn trong nghiệp vụ báo chí.',
+    'Trả lời ngắn gọn, đi thẳng vào trọng tâm; chỉ chia ý theo gạch đầu dòng khi câu trả lời thực sự dài.',
+    'Nếu không biết hoặc không chắc chắn thì nói thẳng là không biết — tuyệt đối không bịa số liệu,',
+    'ngày tháng, tên người hay nội dung văn bản pháp luật.'
+].join(' ');
+
+// Câu trả lời tự do thường dài hơn nhiều so với sapo/tiêu đề, mà Ollama máy A chỉ sinh
+// khoảng 11 token/giây nên 60s mặc định dễ bị cắt ngang giữa chừng.
+const ASSISTANT_TIMEOUT_MS = 120000;
+
+exports.chat = async (req, res) => {
+    const { messages } = req.body;
+    const normalized = normalizeConversation(messages);
+    if (normalized.error) return res.status(400).json({ error: normalized.error });
+
+    try {
+        const reply = await aiGateway.chat(
+            [{ role: 'system', content: ASSISTANT_SYSTEM_PROMPT }, ...normalized.messages],
+            { timeoutMs: ASSISTANT_TIMEOUT_MS }
+        );
+        const trimmed = reply.trim();
+        if (!trimmed) return res.status(502).json({ error: 'Trợ lý không trả về nội dung nào, thử hỏi lại.' });
+        res.json({ reply: trimmed });
+    } catch (err) {
+        handleAiError(err, req, res, 'aiController.chat');
+    }
 };
