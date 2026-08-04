@@ -62,3 +62,4 @@ export const IconMoreVertical = (p) => <Base {...p} fill="currentColor" stroke="
 export const IconChevronLeft = (p) => <Base {...p}><path d="M15 18l-6-6 6-6"/></Base>;
 export const IconChevronRight = (p) => <Base {...p}><path d="M9 18l6-6-6-6"/></Base>;
 export const IconMail = (p) => <Base {...p}><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6 8.5 7 8.5-7"/></Base>;
+export const IconSparkles = (p) => <Base {...p}><path d="M12 3.5 13.8 9l5.5 1.8-5.5 1.8L12 18l-1.8-5.4L4.7 10.8 10.2 9 12 3.5Z"/><path d="M18.5 3v3M20 4.5h-3M6 17v2.5M7.2 18.2H4.8"/></Base>;
