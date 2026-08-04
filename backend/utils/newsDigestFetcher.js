@@ -1,16 +1,11 @@
-// Gom tin từ RSS các báo lớn + tìm kiếm Google Tin tức, lọc lấy tin liên quan tới địa bàn
-// Đắk Lắk, lưu vào dbo.NewsDigestItems. Dùng chung bởi scripts/fetch-news-digest.js (chạy
-// định kỳ qua Windows Task Scheduler) và controllers/newsDigestController.js (nút "Cập nhật
-// ngay" của Admin).
+// Gom tin từ tìm kiếm Google Tin tức, lọc lấy tin liên quan tới địa bàn Đắk Lắk, lưu vào
+// dbo.NewsDigestItems. Dùng chung bởi scripts/fetch-news-digest.js (chạy định kỳ qua Windows
+// Task Scheduler) và controllers/newsDigestController.js (nút "Cập nhật ngay" của Admin).
 //
-// Chưa có báo nào ở Đắk Lắk tự cấp RSS theo tỉnh (baodaklak.vn không có RSS, VnExpress/Dân
-// Trí/Tuổi Trẻ chỉ chia RSS theo chuyên mục, không theo tỉnh) — nên ngoài các chuyên mục có
-// khả năng liên quan (thời sự, pháp luật, đời sống, địa phương) từ báo lớn, có thêm 1 nguồn
-// "Google Tin tức" bằng RSS tìm kiếm chính thức của Google (news.google.com/rss/search) với
-// từ khoá Đắk Lắk/Buôn Ma Thuột — gom được cả các báo/đài nhỏ hơn mà danh sách cứng dưới đây
-// không có, mà không phải cào HTML trang kết quả tìm kiếm (dễ vỡ, có thể vi phạm điều khoản
-// dùng của Google). Khi nào tòa soạn có link RSS riêng của báo/đài địa phương, chỉ cần thêm
-// vào SOURCES.
+// Trước có thêm RSS chuyên mục của VnExpress/Dân Trí/Tuổi Trẻ/Báo Tin Tức (chưa báo nào ở
+// Đắk Lắk tự cấp RSS theo tỉnh) nhưng đã bỏ, chỉ giữ Google Tin tức (news.google.com/rss/search)
+// với từ khoá Đắk Lắk/Buôn Ma Thuột — gom được cả báo/đài nhỏ, không phải cào HTML dễ vỡ.
+// Khi nào tòa soạn có link RSS riêng của báo/đài địa phương, chỉ cần thêm vào SOURCES.
 const Parser = require('rss-parser');
 const { poolPromise, sql } = require('../config/db');
 const { KEYWORDS, matchKeyword, normalizeTitleForDedup, shortenSummary } = require('./newsDigestText');
@@ -23,20 +18,35 @@ const parser = new Parser({
     customFields: { item: [['source', 'sourceTag']] },
 });
 
-// Query tìm trên Google Tin tức — URL-encode ở nơi dùng (GOOGLE_NEWS_QUERY) vì có dấu + dấu ".
-const GOOGLE_NEWS_QUERY = '"Đắk Lắk" OR "Buôn Ma Thuột"';
+// 102 xã/phường của tỉnh Đắk Lắk (mới, sau sáp nhập với Phú Yên) — hiệu lực 01/07/2025 theo
+// Nghị quyết 1660/NQ-UBTVQH15. Chỉ tìm theo "Đắk Lắk"/"Buôn Ma Thuột" bỏ sót tin chỉ nêu tên
+// xã/phường cụ thể (nhất là tin thời sự địa phương ngắn) mà không nhắc lại tên tỉnh.
+const DAKLAK_WARDS = [
+    'Hòa Phú', 'Ea Drông', 'Ea Súp', 'Ea Rốk', 'Ea Bung', 'Ea Wer', 'Ea Nuôl', 'Ea Kiết',
+    "Ea M'Droh", 'Quảng Phú', 'Cuôr Đăng', "Cư M'gar", 'Ea Tul', 'Pơng Drang', 'Krông Búk',
+    'Cư Pơng', 'Ea Khăl', 'Ea Drăng', 'Ea Wy', 'Ea Hiao', 'Krông Năng', 'Dliê Ya', 'Tam Giang',
+    'Phú Xuân', 'Krông Pắc', 'Ea Knuếc', 'Tân Tiến', 'Ea Phê', 'Ea Kly', 'Ea Kar', 'Ea Ô',
+    'Ea Knốp', 'Cư Yang', 'Ea Păl', "M'Drắk", 'Ea Riêng', "Cư M'ta", 'Krông Á', 'Cư Prao',
+    'Hòa Sơn', 'Dang Kang', 'Krông Bông', 'Yang Mao', 'Cư Pui', 'Liên Sơn Lắk', 'Đắk Liêng',
+    'Nam Ka', 'Đắk Phơi', 'Ea Ning', 'Dray Bhăng', 'Ea Ktur', 'Krông Ana', 'Dur Kmăl', 'Ea Na',
+    'Xuân Thọ', 'Xuân Cảnh', 'Xuân Lộc', 'Hòa Xuân', 'Tuy An Bắc', 'Tuy An Đông', 'Ô Loan',
+    'Tuy An Nam', 'Tuy An Tây', 'Phú Hòa 1', 'Phú Hòa 2', 'Tây Hòa', 'Hòa Thịnh', 'Hòa Mỹ',
+    'Sơn Thành', 'Sơn Hòa', 'Vân Hòa', 'Tây Sơn', 'Suối Trai', 'Ea Ly', 'Ea Bá', 'Đức Bình',
+    'Sông Hinh', 'Xuân Lãnh', 'Phú Mỡ', 'Xuân Phước', 'Đồng Xuân', 'Buôn Đôn', "Ea H'Leo",
+    'Ea Trang', 'Ia Lốp', 'Ia Rvê', 'Krông Nô', 'Vụ Bổn',
+    // 14 phường
+    'Buôn Ma Thuột', 'Tân An', 'Tân Lập', 'Thành Nhất', 'Ea Kao', 'Buôn Hồ', 'Cư Bao',
+    'Phú Yên', 'Tuy Hòa', 'Bình Kiến', 'Xuân Đài', 'Sông Cầu', 'Đông Hòa', 'Hòa Hiệp',
+];
+
+// ponytail: OR thẳng theo từng tên xã/phường — vài tên (Quảng Phú, Tân An, Sông Cầu...) trùng
+// tên đơn vị hành chính ở tỉnh khác nên lâu lâu lẫn vài tin không liên quan (đã thực đo ~8%
+// trên 100 kết quả mẫu). Chấp nhận được vì trang này tự ghi rõ "chưa qua kiểm duyệt biên tập,
+// chỉ tham khảo nhanh" — biên tập viên tự lọc trước khi dùng thật. Muốn giảm nhiễu: đổi sang
+// AND theo cặp (tên xã + 1 từ khoá vùng khác như "Tây Nguyên") cho riêng các tên dễ trùng.
+const GOOGLE_NEWS_QUERY = '"Đắk Lắk" OR ' + DAKLAK_WARDS.map(w => `"${w}"`).join(' OR ');
 
 const SOURCES = [
-    { name: 'VnExpress - Thời sự',        url: 'https://vnexpress.net/rss/thoi-su.rss' },
-    { name: 'VnExpress - Pháp luật',      url: 'https://vnexpress.net/rss/phap-luat.rss' },
-    { name: 'VnExpress - Đời sống',       url: 'https://vnexpress.net/rss/gia-dinh.rss' },
-    { name: 'Dân Trí - Thời sự',          url: 'https://dantri.com.vn/rss/thoi-su.rss' },
-    { name: 'Dân Trí - Pháp luật',        url: 'https://dantri.com.vn/rss/phap-luat.rss' },
-    { name: 'Dân Trí - Đời sống',         url: 'https://dantri.com.vn/rss/doi-song.rss' },
-    { name: 'Tuổi Trẻ - Thời sự',         url: 'https://tuoitre.vn/thoi-su.rss' },
-    { name: 'Tuổi Trẻ - Pháp luật',       url: 'https://tuoitre.vn/phap-luat.rss' },
-    { name: 'Tuổi Trẻ - Bạn đọc',         url: 'https://tuoitre.vn/ban-doc.rss' },
-    { name: 'Báo Tin Tức (TTXVN) - Địa phương', url: 'https://baotintuc.vn/dia-phuong.rss' },
     {
         name: 'Google Tin tức',
         url: `https://news.google.com/rss/search?q=${encodeURIComponent(GOOGLE_NEWS_QUERY)}&hl=vi&gl=VN&ceid=VN:vi`,
@@ -116,6 +126,13 @@ async function saveItems(items) {
         const normTitle = normalizeTitleForDedup(it.title);
         if (normTitle && seenTitles.has(normTitle)) continue;
 
+        // RSS đôi khi cho pubDate/isoDate dạng không parse được -> new Date() ra Invalid Date,
+        // driver mssql lỗi khi bind sql.DateTime với giá trị đó. Trước đây lỗi này không khớp
+        // regex trùng-khóa bên dưới nên bị throw giữa loop, làm mất luôn các bài HỢP LỆ còn lại
+        // trong cùng lượt fetch. Validate trước, coi ngày hỏng như "không có" thay vì để insert lỗi.
+        const publishedAt = it.publishedAt ? new Date(it.publishedAt) : null;
+        const validPublishedAt = publishedAt && !isNaN(publishedAt.getTime()) ? publishedAt : null;
+
         try {
             await pool.request()
                 .input('Title', sql.NVarChar(500), it.title.slice(0, 500))
@@ -123,7 +140,7 @@ async function saveItems(items) {
                 .input('SourceName', sql.NVarChar(200), it.sourceName)
                 .input('Summary', sql.NVarChar(sql.MAX), it.summary)
                 .input('Keyword', sql.NVarChar(100), it.keyword)
-                .input('PublishedAt', sql.DateTime, it.publishedAt ? new Date(it.publishedAt) : null)
+                .input('PublishedAt', sql.DateTime, validPublishedAt)
                 .input('NormTitle', sql.NVarChar(500), normTitle.slice(0, 500))
                 .query(`
                     INSERT INTO dbo.NewsDigestItems (Title, Link, SourceName, Summary, Keyword, PublishedAt, NormTitle)
