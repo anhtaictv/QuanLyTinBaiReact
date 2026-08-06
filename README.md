@@ -17,11 +17,11 @@
 
 ---
 
-A full-stack system that runs a newsroom's editorial pipeline end to end: contributors submit articles with an attached Word document, editors and department heads review and approve them, approved files can be round-tripped through Google Docs for collaborative editing, and the team coordinates through a built-in chat. On top of the workflow, an optional **local AI assistant** (self-hosted, no cloud dependency) helps proofread, categorize, and fact-check submissions, and an automated **local news digest** keeps the desk aware of relevant regional coverage — all with server-enforced roles, automated backups, and self-monitoring baked in.
+A full-stack system that runs a newsroom's editorial pipeline end to end: contributors submit articles with an attached Word document, editors and department heads review and approve them, approved files can be round-tripped through Google Docs for collaborative editing, and the team coordinates through a built-in chat. On top of the workflow, an optional **AI assistant** helps proofread, categorize, fact-check, and answer regulation questions over submissions, and an automated **local news digest** keeps the desk aware of relevant regional coverage — all with server-enforced roles, automated backups, and self-monitoring baked in.
 
 - **Backend**: Node.js + Express REST API, Socket.IO, MSSQL (SQL Server)
 - **Frontend**: React 18 SPA, built with Vite
-- **AI**: Local LLM via [Ollama](https://ollama.com) — optional, degrades gracefully when not configured
+- **AI**: Local-first via a shared **AI Gateway** (self-hosted Ollama, with cloud fallback when unreachable) — optional, degrades gracefully when not configured
 
 ## Contents
 
@@ -44,12 +44,13 @@ A full-stack system that runs a newsroom's editorial pipeline end to end: contri
 - Generate formatted `.docx` storyboards from a template (`docxtemplater` + `pizzip`)
 - Server-side search, filtering, and pagination on the article list — doesn't load the entire table into the browser
 
-**AI assistant** (local LLM via Ollama, `/api/ai/*` — off by default, never blocks the workflow if unconfigured)
+**AI assistant** (`/api/ai/*` — off by default, never blocks the workflow if unconfigured)
 - **Editorial assistant**: proofread and normalize wording to journalistic style, suggest 5 headline options, summarize a lede ("sapo") — results are always shown for preview, the editor chooses to apply or discard
 - **Auto-categorization & tagging**: suggests the right existing category and extracts key entities (people, places, organizations) as reference tags, one click to apply
 - **Sensitive-data / compliance screening**: before submission, content is scanned two ways — a regex layer that catches ID numbers, phone numbers, and license plates (works even if the AI model is offline) and an LLM pass that flags wording that may violate editorial guidelines; the editor decides whether to fix it or send anyway
 - **Regulation lookup (RAG)**: admins/department heads ingest internal editorial guidelines or press-law documents into a local knowledge base; editors can then ask natural-language questions and get answers grounded only in the ingested text, with citations — no hallucinated policy
-- Runs entirely against a self-hosted Ollama instance (chat model + embedding model configurable via env vars); every AI route returns a clean `503` when the model host is unreachable instead of failing the request
+- **Free-form assistant chat**: a general-purpose AI chat view for ad-hoc questions, always answering in Vietnamese regardless of how the question is phrased
+- Every request goes through a shared **AI Gateway** (`aiGatewayClient.js`, OpenAI-compatible `/v1/chat/completions` + `/v1/embeddings` contract) that tries a self-hosted Ollama instance first and falls back to a cloud model when it's unreachable — the app itself never talks to Ollama or a cloud provider directly; every AI route returns a clean `503` when the gateway is unreachable instead of failing the request
 
 **Local news digest** (`/api/news-digest/*`)
 - Periodically pulls RSS feeds from major national outlets plus a Google News search feed, filters for items relevant to the newsroom's coverage area, and stores them for the team to browse
@@ -79,7 +80,7 @@ A full-stack system that runs a newsroom's editorial pipeline end to end: contri
 |---|---|
 | API | Express 4, `mssql` (Tedious), `jsonwebtoken`, `bcrypt`, `multer`, `helmet`, `express-rate-limit`, `express-validator` |
 | Real-time | Socket.IO (JWT-authenticated handshake) |
-| AI | [Ollama](https://ollama.com) (local LLM, e.g. `qwen2.5`), local embedding model (e.g. `nomic-embed-text`), JSON-file vector store with cosine-similarity search |
+| AI | Shared **AI Gateway** (OpenAI-compatible) fronting a self-hosted [Ollama](https://ollama.com) instance with cloud fallback, JSON-file vector store with cosine-similarity search for RAG |
 | News digest | `rss-parser` (feeds + Google News search RSS) |
 | Integrations | Google APIs (Drive, OAuth2), `web-push`, Telegram Bot API |
 | Documents | `docxtemplater`, `pizzip` |
@@ -96,7 +97,7 @@ backend/
     controllers/               # auth, news, chat, ai, rag, newsDigest
     middleware/                # authMiddleware, validators
     routes/                     # news, file, drive, push, chat, errorLog, ai, newsDigest
-    services/                   # ollamaClient.js, ragStore.js (JSON vector store)
+    services/                   # aiGatewayClient.js, ragStore.js (JSON vector store)
     sockets/                    # chat socket handlers
     utils/errorLogger.js        # writes to dbo.ErrorLogs + optional Telegram alert
     scripts/                    # daily-backup.js, fetch-news-digest.js, and other maintenance scripts
@@ -108,7 +109,7 @@ frontend/                    # React SPA
     hooks/                      # useIdleLogout, usePushNotification, useChatSocket, ...
     layout/MainLayout.jsx
     services/                   # api.js, newsService.js, chatService.js, aiService.js, ...
-    views/                      # Login, Dashboard, NewsList, NewsForm, Chat, NewsDigest, AIKnowledge, ...
+    views/                      # Login, Dashboard, NewsList, NewsForm, Chat, NewsDigest, AiAssistant, AIKnowledge, ...
   vite.config.js
 ```
 
@@ -133,7 +134,7 @@ Role checks are enforced **server-side** (middleware), not just hidden in the UI
 - (Optional) Google Cloud OAuth2 credentials for Drive integration
 - (Optional) VAPID keys for Web Push (`npx web-push generate-vapid-keys`)
 - (Optional) A Telegram bot token for error alerts (create one via [@BotFather](https://t.me/BotFather))
-- (Optional) [Ollama](https://ollama.com) running somewhere reachable from the backend, with a chat model and an embedding model pulled (e.g. `ollama pull qwen2.5` and `ollama pull nomic-embed-text`), for the AI assistant features
+- (Optional) A reachable **AI Gateway** endpoint (`AI_GATEWAY_URL` + `AI_GATEWAY_API_KEY`, OpenAI-compatible `/v1/chat/completions` + `/v1/embeddings`) for the AI assistant features; without it those routes just respond `503`
 
 ### Backend
 
@@ -145,7 +146,7 @@ npm run dev            # nodemon, or: npm start
 npm test                # run the test suite (node:test)
 ```
 
-Environment variables (`backend/backend/.env`) — see [`.env.example`](./backend/.env.example) for the full, current list. Only `DB_*` and `JWT_SECRET` are required; everything else (Google Drive, Web Push, Telegram, backup settings, `OLLAMA_*`) is optional and degrades gracefully when unset — the AI routes simply respond `503` with `connected: false` instead of breaking the rest of the app.
+Environment variables (`backend/backend/.env`) — see [`.env.example`](./backend/.env.example) for the full, current list. Only `DB_*` and `JWT_SECRET` are required; everything else (Google Drive, Web Push, Telegram, backup settings, `AI_GATEWAY_*`) is optional and degrades gracefully when unset — the AI routes simply respond `503` with `connected: false` instead of breaking the rest of the app.
 
 Never commit `.env`, `service-account.json`, `oauth-credentials.json`, or `google-token.json` — they are already gitignored.
 
@@ -172,14 +173,14 @@ Any setup that can run a long-lived Node process and serve a static SPA works �
 
 ## Testing & CI
 
-- Backend: `node --test` — auth middleware, input-validation rules, and news-digest text utilities (keyword matching, dedup, summary trimming).
+- Backend: `node --test` — auth middleware, input-validation rules, AI Gateway client behavior, AI conversation handling, and news-digest text utilities (keyword matching, dedup, summary trimming).
 - Frontend: Vitest + React Testing Library — routing/auth guards and hook logic.
 - GitHub Actions runs both suites (plus a production build) on every push and pull request to `main`, and auto-deploys on success.
 - Dependabot opens PRs for dependency updates on a weekly schedule.
 
 ## Changelog
 
-See [Releases](../../releases) for the full history of changes. Recent highlights: a local, self-hosted AI assistant (editorial proofreading, auto-categorization, sensitive-data screening, and regulation Q&A via RAG) integrated directly into the submission form; an automated local news digest pulling and deduplicating regional coverage from RSS and Google News; and, earlier, a full move off Create React App onto Vite (~66% smaller initial bundle via route-level code-splitting), an SQL Server driver upgrade across six majors, and the operational layer described above (health check, log rotation, automated backups, Telegram alerts, CI/CD, and the project's automated test suite).
+See [Releases](../../releases) for the full history of changes. Recent highlights: the AI assistant (editorial proofreading, auto-categorization, sensitive-data screening, regulation Q&A via RAG, and a new free-form assistant chat) migrated from calling Ollama directly to a shared **AI Gateway**, so the app now degrades to a cloud fallback instead of losing AI entirely when the local model host is offline; an automated local news digest pulling and deduplicating regional coverage from RSS and Google News; and, earlier, a full move off Create React App onto Vite (~66% smaller initial bundle via route-level code-splitting), an SQL Server driver upgrade across six majors, and the operational layer described above (health check, log rotation, automated backups, Telegram alerts, CI/CD, and the project's automated test suite).
 
 ## License
 

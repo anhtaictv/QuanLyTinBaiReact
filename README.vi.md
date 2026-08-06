@@ -17,11 +17,11 @@
 
 ---
 
-Hệ thống vận hành toàn bộ quy trình biên tập của tòa soạn: cộng tác viên (CTV) gửi bài kèm file Word, người duyệt và trưởng ban xét duyệt, bài đã duyệt có thể đưa qua Google Docs để chỉnh sửa cộng tác, và cả tòa soạn trao đổi qua chat nội bộ ngay trong hệ thống. Bên cạnh quy trình đó, hệ thống có thêm **trợ lý AI cục bộ** (tự triển khai, không phụ thuộc dịch vụ đám mây) hỗ trợ biên tập, phân loại và rà soát nội dung, cùng **tính năng tổng hợp tin địa phương** tự động giúp tòa soạn nắm bắt tin tức liên quan tới địa bàn — tất cả đều được kiểm soát quyền ở backend, tự sao lưu, và tự giám sát.
+Hệ thống vận hành toàn bộ quy trình biên tập của tòa soạn: cộng tác viên (CTV) gửi bài kèm file Word, người duyệt và trưởng ban xét duyệt, bài đã duyệt có thể đưa qua Google Docs để chỉnh sửa cộng tác, và cả tòa soạn trao đổi qua chat nội bộ ngay trong hệ thống. Bên cạnh quy trình đó, hệ thống có thêm **trợ lý AI** hỗ trợ biên tập, phân loại, rà soát nội dung và tra cứu quy định, cùng **tính năng tổng hợp tin địa phương** tự động giúp tòa soạn nắm bắt tin tức liên quan tới địa bàn — tất cả đều được kiểm soát quyền ở backend, tự sao lưu, và tự giám sát.
 
 - **Backend**: Node.js + Express REST API, Socket.IO, MSSQL (SQL Server)
 - **Frontend**: React 18 SPA, build bằng Vite
-- **AI**: Mô hình ngôn ngữ cục bộ qua [Ollama](https://ollama.com) — tùy chọn, tự tắt êm nếu chưa cấu hình
+- **AI**: Ưu tiên chạy cục bộ qua **AI Gateway** dùng chung (Ollama tự triển khai, tự chuyển sang model đám mây khi không kết nối được) — tùy chọn, tự tắt êm nếu chưa cấu hình
 
 ## Mục lục
 
@@ -44,12 +44,13 @@ Hệ thống vận hành toàn bộ quy trình biên tập của tòa soạn: c�
 - Xuất file `.docx` kịch bản phân cảnh từ file mẫu (`docxtemplater` + `pizzip`)
 - Tìm kiếm, lọc, phân trang danh sách bài viết ở server — không kéo hết cả bảng về trình duyệt
 
-**Trợ lý AI** (mô hình ngôn ngữ cục bộ qua Ollama, `/api/ai/*` — mặc định tắt, không bao giờ chặn nghiệp vụ nếu chưa cấu hình)
+**Trợ lý AI** (`/api/ai/*` — mặc định tắt, không bao giờ chặn nghiệp vụ nếu chưa cấu hình)
 - **Trợ lý biên tập**: sửa lỗi chính tả/ngữ pháp, chuẩn hóa văn phong theo chuẩn báo chí, gợi ý 5 phương án tiêu đề, tóm tắt đoạn Sapo — kết quả luôn hiển thị để xem trước, biên tập viên tự chọn áp dụng hay bỏ qua
 - **Phân loại & gắn tag tự động**: gợi ý đúng chuyên mục có sẵn và trích xuất các thực thể quan trọng (tên người, địa danh, cơ quan/tổ chức) làm tag tham khảo, bấm là áp dụng
 - **Kiểm duyệt & bảo mật thông tin**: trước khi gửi bài, nội dung được quét bằng hai lớp — quét mẫu (regex) nhận diện số CCCD, số điện thoại, biển số xe (chạy được cả khi AI cục bộ chưa kết nối) và AI rà soát từ ngữ có thể vi phạm quy định biên tập; biên tập viên tự quyết định gửi tiếp hay quay lại sửa
 - **Tra cứu quy định (RAG)**: Admin/Trưởng ban/Thư ký nạp văn bản quy định, quy chế biên tập, luật báo chí vào kho tri thức nội bộ; biên tập viên hỏi - đáp bằng ngôn ngữ tự nhiên, câu trả lời chỉ dựa trên đúng nội dung đã nạp kèm trích dẫn nguồn — không tự suy diễn
-- Chạy hoàn toàn qua một máy chủ Ollama tự triển khai (model chat + model embedding cấu hình qua biến môi trường); mọi route AI trả về `503` gọn gàng khi không kết nối được máy AI, thay vì làm lỗi cả request
+- **Trợ lý hỏi đáp tự do**: màn hình chat AI để hỏi đáp tự do ngoài quy trình biên tập, luôn ép trả lời bằng tiếng Việt bất kể câu hỏi đặt bằng ngôn ngữ gì
+- Mọi request đều đi qua **AI Gateway** dùng chung (`aiGatewayClient.js`, theo đúng hợp đồng OpenAI `/v1/chat/completions` + `/v1/embeddings`) — gateway tự thử máy Ollama tự triển khai trước, chuyển sang model đám mây khi không tới được; app không bao giờ gọi thẳng Ollama hay nhà cung cấp đám mây; mọi route AI trả về `503` gọn gàng khi gateway không kết nối được, thay vì làm lỗi cả request
 
 **Tổng hợp tin địa phương** (`/api/news-digest/*`)
 - Định kỳ lấy tin từ RSS các báo lớn trong nước cộng thêm nguồn tìm kiếm Google Tin tức, lọc lấy tin liên quan tới địa bàn tòa soạn phụ trách, lưu lại để cả nhóm theo dõi
@@ -79,7 +80,7 @@ Hệ thống vận hành toàn bộ quy trình biên tập của tòa soạn: c�
 |---|---|
 | API | Express 4, `mssql` (Tedious), `jsonwebtoken`, `bcrypt`, `multer`, `helmet`, `express-rate-limit`, `express-validator` |
 | Real-time | Socket.IO (xác thực JWT ngay ở handshake) |
-| AI | [Ollama](https://ollama.com) (mô hình ngôn ngữ cục bộ, vd `qwen2.5`), model embedding cục bộ (vd `nomic-embed-text`), kho vector dạng file JSON tìm bằng cosine similarity |
+| AI | **AI Gateway** dùng chung (chuẩn OpenAI) đứng trước [Ollama](https://ollama.com) tự triển khai, tự chuyển sang model đám mây khi cần, kho vector dạng file JSON tìm bằng cosine similarity cho RAG |
 | Tổng hợp tin | `rss-parser` (RSS báo chí + RSS tìm kiếm Google Tin tức) |
 | Tích hợp ngoài | Google APIs (Drive, OAuth2), `web-push`, Telegram Bot API |
 | Xử lý văn bản | `docxtemplater`, `pizzip` |
@@ -96,7 +97,7 @@ backend/
     controllers/                # auth, news, chat, ai, rag, newsDigest
     middleware/                 # authMiddleware, validators
     routes/                     # news, file, drive, push, chat, errorLog, ai, newsDigest
-    services/                   # ollamaClient.js, ragStore.js (kho vector JSON)
+    services/                   # aiGatewayClient.js, ragStore.js (kho vector JSON)
     sockets/                    # xử lý socket cho chat
     utils/errorLogger.js        # ghi vào dbo.ErrorLogs + cảnh báo Telegram (tùy chọn)
     scripts/                    # daily-backup.js, fetch-news-digest.js và các script bảo trì khác
@@ -133,7 +134,7 @@ Phân quyền được kiểm tra **ở backend** (middleware), không chỉ ẩ
 - (Tùy chọn) Google Cloud OAuth2 credentials cho tích hợp Drive
 - (Tùy chọn) VAPID keys cho Web Push (`npx web-push generate-vapid-keys`)
 - (Tùy chọn) Token bot Telegram để nhận cảnh báo lỗi (tạo qua [@BotFather](https://t.me/BotFather))
-- (Tùy chọn) [Ollama](https://ollama.com) chạy ở nơi backend kết nối tới được, đã pull sẵn 1 model chat và 1 model embedding (vd `ollama pull qwen2.5` và `ollama pull nomic-embed-text`), để dùng các tính năng trợ lý AI
+- (Tùy chọn) Một **AI Gateway** kết nối được (`AI_GATEWAY_URL` + `AI_GATEWAY_API_KEY`, chuẩn OpenAI `/v1/chat/completions` + `/v1/embeddings`) để dùng các tính năng trợ lý AI; nếu không, các route đó chỉ trả về `503`
 
 ### Backend
 
@@ -145,7 +146,7 @@ npm run dev             # nodemon, hoặc: npm start
 npm test                 # chạy bộ test (node:test)
 ```
 
-Biến môi trường (`backend/backend/.env`) — xem đầy đủ và cập nhật nhất tại [`.env.example`](./backend/.env.example). Chỉ `DB_*` và `JWT_SECRET` là bắt buộc; phần còn lại (Google Drive, Web Push, Telegram, cấu hình backup, `OLLAMA_*`) đều tùy chọn, bỏ trống thì tính năng liên quan tự tắt êm — riêng route AI trả về `503` kèm `connected: false`, không làm lỗi phần còn lại của app.
+Biến môi trường (`backend/backend/.env`) — xem đầy đủ và cập nhật nhất tại [`.env.example`](./backend/.env.example). Chỉ `DB_*` và `JWT_SECRET` là bắt buộc; phần còn lại (Google Drive, Web Push, Telegram, cấu hình backup, `AI_GATEWAY_*`) đều tùy chọn, bỏ trống thì tính năng liên quan tự tắt êm — riêng route AI trả về `503` kèm `connected: false`, không làm lỗi phần còn lại của app.
 
 Không commit `.env`, `service-account.json`, `oauth-credentials.json`, `google-token.json` — các file này đã được gitignore.
 
@@ -172,14 +173,14 @@ Bất kỳ môi trường có thể chạy 1 Node process lâu dài + phục v�
 
 ## Testing & CI
 
-- Backend: `node --test` — middleware xác thực, các rule validate input, và các hàm xử lý text của tổng hợp tin (khớp từ khóa, chống trùng, cắt gọn tóm tắt).
+- Backend: `node --test` — middleware xác thực, các rule validate input, hành vi của AI Gateway client, xử lý hội thoại AI, và các hàm xử lý text của tổng hợp tin (khớp từ khóa, chống trùng, cắt gọn tóm tắt).
 - Frontend: Vitest + React Testing Library — route/auth guard và logic của hook.
 - GitHub Actions chạy cả 2 bộ test (kèm build production) mỗi lần push/PR vào `main`, tự deploy khi pass.
 - Dependabot tự tạo PR cập nhật dependency hàng tuần.
 
 ## Changelog
 
-Xem [Releases](../../releases) để biết đầy đủ lịch sử thay đổi. Điểm nổi bật gần đây: trợ lý AI cục bộ tự triển khai (sửa lỗi/chuẩn hóa văn phong, gợi ý tiêu đề/tóm tắt, phân loại & gắn tag tự động, rà soát thông tin nhạy cảm, tra cứu quy định qua RAG) tích hợp thẳng vào form soạn bài; tính năng tổng hợp tin địa phương tự động, chống trùng, lấy từ RSS báo chí và Google Tin tức; và trước đó, chuyển hẳn frontend từ Create React App sang Vite (bundle ban đầu nhỏ hơn ~66% nhờ code-split theo route), nâng driver SQL Server qua 6 major version, cùng toàn bộ lớp vận hành nói trên (health check, log xoay vòng, backup tự động, cảnh báo Telegram, CI/CD, và bộ test tự động của project).
+Xem [Releases](../../releases) để biết đầy đủ lịch sử thay đổi. Điểm nổi bật gần đây: trợ lý AI (sửa lỗi/chuẩn hóa văn phong, gợi ý tiêu đề/tóm tắt, phân loại & gắn tag tự động, rà soát thông tin nhạy cảm, tra cứu quy định qua RAG, và thêm màn hình hỏi đáp tự do) chuyển từ gọi thẳng Ollama sang dùng chung **AI Gateway**, nhờ đó app tự chuyển sang model đám mây thay vì mất hẳn AI khi máy chạy model cục bộ offline; tính năng tổng hợp tin địa phương tự động, chống trùng, lấy từ RSS báo chí và Google Tin tức; và trước đó, chuyển hẳn frontend từ Create React App sang Vite (bundle ban đầu nhỏ hơn ~66% nhờ code-split theo route), nâng driver SQL Server qua 6 major version, cùng toàn bộ lớp vận hành nói trên (health check, log xoay vòng, backup tự động, cảnh báo Telegram, CI/CD, và bộ test tự động của project).
 
 ## License
 
