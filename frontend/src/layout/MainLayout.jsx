@@ -206,7 +206,7 @@ const MainLayout = () => {
       {/* Header sidebar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <h2 style={{ color: 'var(--sidebar-fg)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px', letterSpacing: '0.02em', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <IconFileBrand /> QUẢN LÝ TIN
+          <img src="/brand/logo-mark.png" alt="" width={26} height={26} style={{ borderRadius: '50%' }} /> QUẢN LÝ TIN
         </h2>
         <div style={{ display: 'flex', gap: 5 }}>
           {isAdminStrict && <ErrorBell />}
@@ -313,8 +313,8 @@ const MainLayout = () => {
           <IconMenu size={20} />
         </button>
 
-        <span style={{ color: 'var(--sidebar-fg)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px', letterSpacing: '0.02em' }}>
-          QUẢN LÝ TIN
+        <span style={{ color: 'var(--sidebar-fg)', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '15px', letterSpacing: '0.02em', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <img src="/brand/logo-mark.png" alt="" width={24} height={24} style={{ borderRadius: '50%' }} /> QUẢN LÝ TIN
         </span>
 
         <div style={{ display: 'flex', gap: 5 }}>
@@ -367,11 +367,5 @@ const MainLayout = () => {
     </div>
   );
 };
-
-const IconFileBrand = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4 19.5V6a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7l-3 3.5Z"/>
-  </svg>
-);
 
 export default MainLayout;

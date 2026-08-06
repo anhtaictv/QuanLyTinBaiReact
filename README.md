@@ -1,9 +1,21 @@
-[![CI](https://github.com/anhtaictv/QuanLyTinBaiReact/actions/workflows/ci.yml/badge.svg)](https://github.com/anhtaictv/QuanLyTinBaiReact/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/anhtaictv/QuanLyTinBaiReact)](https://github.com/anhtaictv/QuanLyTinBaiReact/releases)
-[![Node](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](https://nodejs.org)
-[![React](https://img.shields.io/badge/react-18-61DAFB?logo=react&logoColor=white)](https://react.dev)
+<div align="center">
+  <img src="docs/logo-banner.jpg" alt="QuanLyTinBai logo" width="200" />
 
-# QuanLyTinBai — Newsroom Editorial Workflow System
+  # QuanLyTinBai
+  ### Newsroom Editorial Workflow System
+
+  *Uy tín · Chính xác · Kịp thời*
+
+  [![CI](https://github.com/anhtaictv/QuanLyTinBaiReact/actions/workflows/ci.yml/badge.svg)](https://github.com/anhtaictv/QuanLyTinBaiReact/actions/workflows/ci.yml)
+  [![Release](https://img.shields.io/github/v/release/anhtaictv/QuanLyTinBaiReact)](https://github.com/anhtaictv/QuanLyTinBaiReact/releases)
+  [![Node](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+  [![React](https://img.shields.io/badge/react-18-61DAFB?logo=react&logoColor=white)](https://react.dev)
+  [![License](https://img.shields.io/badge/license-Private-lightgrey)](#license)
+
+  🇻🇳 [Tiếng Việt](./README.vi.md)
+</div>
+
+---
 
 A full-stack system that runs a newsroom's editorial pipeline end to end: contributors submit articles with an attached Word document, editors and department heads review and approve them, approved files can be round-tripped through Google Docs for collaborative editing, and the team coordinates through a built-in chat. On top of the workflow, an optional **local AI assistant** (self-hosted, no cloud dependency) helps proofread, categorize, and fact-check submissions, and an automated **local news digest** keeps the desk aware of relevant regional coverage — all with server-enforced roles, automated backups, and self-monitoring baked in.
 
@@ -11,7 +23,16 @@ A full-stack system that runs a newsroom's editorial pipeline end to end: contri
 - **Frontend**: React 18 SPA, built with Vite
 - **AI**: Local LLM via [Ollama](https://ollama.com) — optional, degrades gracefully when not configured
 
-> 🇻🇳 Vietnamese version: [README.vi.md](./README.vi.md)
+## Contents
+
+- [Features](#features)
+- [Tech stack](#tech-stack)
+- [Project structure](#project-structure)
+- [Roles](#roles)
+- [Getting started](#getting-started)
+- [Testing & CI](#testing--ci)
+- [Changelog](#changelog)
+- [License](#license)
 
 ## Features
 

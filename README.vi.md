@@ -1,9 +1,21 @@
-[![CI](https://github.com/anhtaictv/QuanLyTinBaiReact/actions/workflows/ci.yml/badge.svg)](https://github.com/anhtaictv/QuanLyTinBaiReact/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/anhtaictv/QuanLyTinBaiReact)](https://github.com/anhtaictv/QuanLyTinBaiReact/releases)
-[![Node](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](https://nodejs.org)
-[![React](https://img.shields.io/badge/react-18-61DAFB?logo=react&logoColor=white)](https://react.dev)
+<div align="center">
+  <img src="docs/logo-banner.jpg" alt="Logo Quản Lý Tin Bài" width="200" />
 
-# QuanLyTinBai — Hệ thống Quản lý Tin Bài
+  # QuanLyTinBai
+  ### Hệ thống Quản lý Tin Bài
+
+  *Uy tín · Chính xác · Kịp thời*
+
+  [![CI](https://github.com/anhtaictv/QuanLyTinBaiReact/actions/workflows/ci.yml/badge.svg)](https://github.com/anhtaictv/QuanLyTinBaiReact/actions/workflows/ci.yml)
+  [![Release](https://img.shields.io/github/v/release/anhtaictv/QuanLyTinBaiReact)](https://github.com/anhtaictv/QuanLyTinBaiReact/releases)
+  [![Node](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+  [![React](https://img.shields.io/badge/react-18-61DAFB?logo=react&logoColor=white)](https://react.dev)
+  [![License](https://img.shields.io/badge/license-Private-lightgrey)](#license)
+
+  🇬🇧 [English](./README.md)
+</div>
+
+---
 
 Hệ thống vận hành toàn bộ quy trình biên tập của tòa soạn: cộng tác viên (CTV) gửi bài kèm file Word, người duyệt và trưởng ban xét duyệt, bài đã duyệt có thể đưa qua Google Docs để chỉnh sửa cộng tác, và cả tòa soạn trao đổi qua chat nội bộ ngay trong hệ thống. Bên cạnh quy trình đó, hệ thống có thêm **trợ lý AI cục bộ** (tự triển khai, không phụ thuộc dịch vụ đám mây) hỗ trợ biên tập, phân loại và rà soát nội dung, cùng **tính năng tổng hợp tin địa phương** tự động giúp tòa soạn nắm bắt tin tức liên quan tới địa bàn — tất cả đều được kiểm soát quyền ở backend, tự sao lưu, và tự giám sát.
 
@@ -11,7 +23,16 @@ Hệ thống vận hành toàn bộ quy trình biên tập của tòa soạn: c�
 - **Frontend**: React 18 SPA, build bằng Vite
 - **AI**: Mô hình ngôn ngữ cục bộ qua [Ollama](https://ollama.com) — tùy chọn, tự tắt êm nếu chưa cấu hình
 
-> 🇬🇧 Bản tiếng Anh: [README.md](./README.md)
+## Mục lục
+
+- [Tính năng](#tính-năng)
+- [Công nghệ sử dụng](#công-nghệ-sử-dụng)
+- [Cấu trúc project](#cấu-trúc-project)
+- [Phân quyền](#phân-quyền)
+- [Bắt đầu](#bắt-đầu)
+- [Testing & CI](#testing--ci)
+- [Changelog](#changelog)
+- [License](#license)
 
 ## Tính năng
 

@@ -89,9 +89,7 @@ const Login = () => {
     <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--bg)', padding: 20 }}>
       <form onSubmit={handleSubmit} style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '40px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', width: '100%', maxWidth: 400 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center', marginBottom: 8 }}>
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 19.5V6a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7l-3 3.5Z"/>
-          </svg>
+          <img src="/brand/logo-mark.png" alt="Quản Lý Tin Bài" width={32} height={32} style={{ borderRadius: '50%' }} />
           <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16, letterSpacing: '0.02em', color: 'var(--text)' }}>QUẢN LÝ TIN</span>
         </div>
         <h2 style={{ textAlign: 'center', color: 'var(--text)', fontSize: 22, marginBottom: 28 }}>
