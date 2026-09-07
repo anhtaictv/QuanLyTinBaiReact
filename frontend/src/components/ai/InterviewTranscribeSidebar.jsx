@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { IconMic, IconX, IconAlertCircle, IconCheck, IconCloudUpload } from '../icons';
 
 const SpeechRecognitionCtor = typeof window !== 'undefined'
-  ? (window.SpeechRecognition || window.webkitSpeechRecognition) as any
+  ? (window.SpeechRecognition || window.webkitSpeechRecognition)
   : null;
 
 const btnStyle = {
