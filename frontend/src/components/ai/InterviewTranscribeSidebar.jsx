@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { IconMic, IconX, IconAlertCircle, IconCheck, IconCloudUpload } from '../icons';
 
 const SpeechRecognitionCtor = typeof window !== 'undefined'
-  ? (window.SpeechRecognition || window.webkitSpeechRecognition)
+  ? (window.SpeechRecognition || window.webkitSpeechRecognition) as any
   : null;
 
 const btnStyle = {
@@ -21,8 +21,10 @@ const InterviewTranscribeSidebar = ({ onClose, onInsertSapo, onInsertNoiDung }) 
   const [transcript, setTranscript] = useState('');
   const [interim, setInterim] = useState('');
   const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
   const recognitionRef = useRef(null);
   const wantListeningRef = useRef(false); // để onend biết có nên tự khởi động lại không
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (!SpeechRecognitionCtor) return;
@@ -85,6 +87,31 @@ const InterviewTranscribeSidebar = ({ onClose, onInsertSapo, onInsertNoiDung }) 
       setListening(true);
     }
   }, [listening]);
+
+  const handleTranscribeFile = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setError('');
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData
+      });
+      if (!response.ok) throw new Error('Transcribe failed');
+      const data = await response.json();
+      setTranscript(prev => (prev ? prev + '\n\n' : '') + (data.text || ''));
+    } catch (err) {
+      setError('Lỗi rã băng: ' + (err.message || 'Không thể kết nối backend'));
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }, []);
 
   return (
     <div style={{
@@ -163,10 +190,18 @@ const InterviewTranscribeSidebar = ({ onClose, onInsertSapo, onInsertNoiDung }) 
         <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-muted)', margin: '24px 0 8px', textTransform: 'uppercase' }}>
           Rã băng file ghi âm
         </div>
-        <div style={{ border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)', padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12.5 }}>
+        <label style={{ border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)', padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12.5, cursor: uploading ? 'not-allowed' : 'pointer', display: 'block', opacity: uploading ? 0.6 : 1 }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="audio/*"
+            onChange={handleTranscribeFile}
+            disabled={uploading}
+            style={{ display: 'none' }}
+          />
           <IconCloudUpload size={20} style={{ marginBottom: 6, opacity: 0.6 }} />
-          <div>Chưa khả dụng — cần bổ sung model nhận diện giọng nói (Speech-to-Text) vào AI Gateway trước.</div>
-        </div>
+          <div>{uploading ? 'Đang xử lý...' : 'Chọn file audio để rã băng (MP3, WAV, WebM...)'}</div>
+        </label>
       </div>
     </div>
   );
