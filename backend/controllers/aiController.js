@@ -1,5 +1,6 @@
 const aiGateway = require('../services/aiGatewayClient');
 const { normalizeConversation } = require('../utils/aiConversation');
+const { extractJson } = require('../utils/aiJson');
 const { logError } = require('../utils/errorLogger');
 
 // Danh mục hiện có trên form soạn bài (NewsForm.jsx) — giữ khớp để gợi ý category
@@ -21,16 +22,6 @@ function handleAiError(err, req, res, source) {
     }
     logError({ source, message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
     res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
-}
-
-// Cố gắng trích + parse JSON từ câu trả lời của model kể cả khi model kèm thêm chữ
-// thừa (giải thích, markdown ```json``` ...) quanh khối JSON.
-function extractJson(raw) {
-    if (!raw) return null;
-    try { return JSON.parse(raw); } catch { /* thử fallback bên dưới */ }
-    const match = raw.match(/[[{][\s\S]*[\]}]/);
-    if (!match) return null;
-    try { return JSON.parse(match[0]); } catch { return null; }
 }
 
 exports.health = async (req, res) => {

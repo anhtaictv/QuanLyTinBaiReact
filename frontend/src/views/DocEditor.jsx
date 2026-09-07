@@ -1,11 +1,15 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { showToastSuccess, showToastError } from '../utils/Toast';
 import {
   IconCloudUpload, IconAlertTriangle, IconRefresh, IconArrowLeft, IconCheckCircle,
-  IconFileText, IconExternalLink, IconEdit, IconInfo, IconList, IconLoader
+  IconFileText, IconExternalLink, IconEdit, IconInfo, IconList, IconLoader,
+  IconEye, IconX, IconRobot
 } from '../components/icons';
+import VisualDiff from '../components/VisualDiff';
+import ArticleChatPopover from '../components/ai/ArticleChatPopover';
+import { useDropdownPosition } from '../hooks/useDropdownPosition';
 
 const DocEditor = () => {
   const { postId }  = useParams();
@@ -15,10 +19,18 @@ const DocEditor = () => {
   const [editUrl,     setEditUrl]     = useState('');
   const [storagePath, setStoragePath] = useState(''); // để ghi đè đúng file
   const [postTitle,   setPostTitle]   = useState('');
+  const [postContent, setPostContent] = useState(''); // ngữ cảnh cho chat AI ghim theo bài
   const [status,      setStatus]      = useState('loading'); // loading | ready | completing | done | error
   const [errorMsg,    setErrorMsg]    = useState('');
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [elapsed,     setElapsed]     = useState(0);
+  const [showDiff,    setShowDiff]    = useState(false);
+  const [diffData,    setDiffData]    = useState(null); // { originalText, currentText, singleRevision }
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffError,   setDiffError]   = useState('');
+  const [showChat,    setShowChat]    = useState(false);
+  const chatButtonRef = useRef(null);
+  const chatPos = useDropdownPosition(showChat, chatButtonRef, 340);
 
   // uploadToDrive phải khai báo trước mọi useEffect tham chiếu nó trong deps
   // array (deps được đọc ngay khi render, khai báo const ở dưới sẽ ReferenceError
@@ -36,6 +48,13 @@ const DocEditor = () => {
 
       setPostTitle(found.Title || found.title || `Bài #${postId}`);
       setStoragePath(sp);
+
+      try {
+        const parsed = JSON.parse(found.Content || found.content || '');
+        setPostContent([parsed.sapo, parsed.noiDung].filter(Boolean).join('\n\n'));
+      } catch {
+        setPostContent(found.Content || found.content || '');
+      }
 
       // Upload lên Drive
       const driveRes = await api.post('/drive/upload', {
@@ -90,6 +109,22 @@ const DocEditor = () => {
       setStatus('ready');
     }
   }, [driveFileId, storagePath, postId]);
+
+  // ── Xem thay đổi: diff bản gốc CTV gửi ↔ bản đang sửa trên Google Docs ───────
+  const loadDiff = useCallback(async () => {
+    if (!driveFileId) return;
+    setShowDiff(true);
+    setDiffLoading(true);
+    setDiffError('');
+    try {
+      const res = await api.get(`/drive/diff/${driveFileId}`);
+      setDiffData(res.data);
+    } catch (err) {
+      setDiffError(err.response?.data?.error || err.message);
+    } finally {
+      setDiffLoading(false);
+    }
+  }, [driveFileId]);
 
   const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -167,6 +202,12 @@ const DocEditor = () => {
 
         {/* Phải: nút */}
         <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={loadDiff} style={btnStyle('rgba(255,255,255,0.08)')}>
+            <IconEye size={14} />Xem thay đổi
+          </button>
+          <button ref={chatButtonRef} onClick={() => setShowChat(v => !v)} style={btnStyle('rgba(255,255,255,0.08)')}>
+            <IconRobot size={14} />Hỏi AI
+          </button>
           <button onClick={() => window.open(editUrl, '_blank')} style={btnStyle('rgba(255,255,255,0.08)')}>
             <IconExternalLink size={14} />Mở tab mới
           </button>
@@ -209,6 +250,33 @@ const DocEditor = () => {
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><IconCheckCircle size={13} />Bấm <strong>"Hoàn thành &amp; Duyệt bài"</strong> để lưu file về VPS và duyệt bài cho CTV.</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><IconExternalLink size={13} />Nếu iframe bị chặn, dùng <strong>"Mở tab mới"</strong>.</span>
       </div>
+
+      {/* Modal Xem thay đổi */}
+      {showDiff && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20, maxWidth: 720, width: '100%', maxHeight: '80vh', overflowY: 'auto', boxShadow: 'var(--shadow-md)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ fontSize: 16, display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}><IconEye size={16} />So sánh với bản gốc CTV gửi</h3>
+              <button onClick={() => setShowDiff(false)} aria-label="Đóng" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}><IconX size={18} /></button>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 0, marginBottom: 14 }}>
+              Chỉ so sánh trong phiên chỉnh sửa đang mở (bản gốc CTV gửi ↔ bản đang sửa), không phải lịch sử nhiều lần duyệt.
+            </p>
+            {diffLoading && <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 13.5 }}><IconLoader size={15} />Đang tải...</div>}
+            {diffError && <div style={{ color: 'var(--danger)', fontSize: 13.5 }}>{diffError}</div>}
+            {diffData && !diffLoading && (
+              diffData.singleRevision
+                ? <div style={{ fontSize: 13.5, color: 'var(--text-muted)' }}>Chưa có thay đổi nào để so sánh.</div>
+                : <VisualDiff originalText={diffData.originalText} currentText={diffData.currentText} />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Chat AI ghim theo bài viết — neo dưới nút "Hỏi AI" */}
+      {showChat && (
+        <ArticleChatPopover title={postTitle} content={postContent} pos={chatPos} onClose={() => setShowChat(false)} />
+      )}
     </div>
   );
 };

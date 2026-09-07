@@ -1,8 +1,21 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // injectManifest (không phải generateSW) để GIỮ NGUYÊN src/sw.js đang tự viết tay xử lý
+    // push/notificationclick — generateSW sẽ sinh sw.js mới đè lên, mất luôn phần push.
+    VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
+      injectManifest: { swSrc: 'src/sw.js' },
+      manifest: false, // public/manifest.json viết tay đã đủ dùng, không cần plugin sinh thêm
+      injectRegister: null, // MainLayout.jsx đã tự gọi navigator.serviceWorker.register('/sw.js')
+    }),
+  ],
   build: {
     outDir: 'build',
   },

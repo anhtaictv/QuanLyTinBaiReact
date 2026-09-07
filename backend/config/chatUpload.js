@@ -41,4 +41,4 @@ function isImageFile(originalName) {
     return IMAGE_EXTS.includes(path.extname(originalName).toLowerCase());
 }
 
-module.exports = { upload, isImageFile, STORAGE_ROOT };
+module.exports = { upload, isImageFile, STORAGE_ROOT, IMAGE_EXTS };

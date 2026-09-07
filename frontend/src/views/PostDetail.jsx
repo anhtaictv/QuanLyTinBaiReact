@@ -1,12 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { showToastSuccess, showToastError } from '../utils/Toast';
 import {
   IconFileText, IconDownload, IconEdit, IconSettings, IconArrowLeft,
-  IconFolder, IconAlertCircle, IconCheckCircle, IconXCircle, IconClock
+  IconFolder, IconAlertCircle, IconCheckCircle, IconXCircle, IconClock, IconRobot
 } from '../components/icons';
 import LoadingState from '../components/LoadingState';
+import RagChecksPanel from '../components/ai/RagChecksPanel';
+import ArticleChatPopover from '../components/ai/ArticleChatPopover';
+import { useDropdownPosition } from '../hooks/useDropdownPosition';
 
 const PostDetail = () => {
   const { id }   = useParams();
@@ -89,6 +92,9 @@ const PostDetail = () => {
   // ── PHÊ DUYỆT ─────────────────────────────────────────────────────────────
   // Chặn double-click bắn 2 request PUT trùng (nút trước đây không disable khi đang xử lý).
   const [processing, setProcessing] = useState(false);
+  const [showChat,   setShowChat]   = useState(false);
+  const chatButtonRef = useRef(null);
+  const chatPos = useDropdownPosition(showChat, chatButtonRef, 340);
 
   const handleApprove = async () => {
     if (processing) return;
@@ -119,7 +125,7 @@ const PostDetail = () => {
       {/* ── HEADER ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 14, marginBottom: 20, flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ fontSize: 20, display: 'flex', alignItems: 'center', gap: 8 }}><IconFileText size={18} style={{ color: 'var(--accent)' }} />Chi tiết Bài viết</h2>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {hasFile && (
             <button onClick={handleDownloadFile} style={btn('var(--success)')}>
               <IconDownload size={14} />Tải File Word
@@ -130,6 +136,19 @@ const PostDetail = () => {
               <IconEdit size={14} />Chỉnh sửa Google Docs
             </button>
           )}
+          <button
+            ref={chatButtonRef}
+            onClick={() => setShowChat(v => !v)}
+            title="Hỏi AI về bài viết"
+            aria-label="Hỏi AI về bài viết"
+            style={{
+              width: 34, height: 34, borderRadius: 'var(--radius-sm)',
+              background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}
+          >
+            <IconRobot size={16} />
+          </button>
         </div>
       </div>
 
@@ -195,6 +214,8 @@ const PostDetail = () => {
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20, marginBottom: 20 }}>
           <h3 style={{ marginBottom: 16, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}><IconSettings size={16} style={{ color: 'var(--text-muted)' }} />Thao tác phê duyệt</h3>
 
+          <RagChecksPanel content={[sapo, noiDung].filter(Boolean).join('\n\n')} />
+
           {/* Nút duyệt/từ chối */}
           {statusID === 1 && (
             <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -244,6 +265,11 @@ const PostDetail = () => {
       <button onClick={() => navigate('/news')} style={btn('var(--surface-2)', 'var(--text)')}>
         <IconArrowLeft size={14} />Trở lại danh sách
       </button>
+
+      {/* ── CHAT AI GHIM THEO BÀI (neo dưới nút "Hỏi AI" ở header) ── */}
+      {showChat && (
+        <ArticleChatPopover title={tieuDe} content={[sapo, noiDung].filter(Boolean).join('\n\n')} pos={chatPos} onClose={() => setShowChat(false)} />
+      )}
     </div>
   );
 };

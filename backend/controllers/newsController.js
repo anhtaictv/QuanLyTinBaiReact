@@ -5,6 +5,9 @@ const fs = require('fs');
 const path = require('path');
 const { sendPushToRoles, sendPushToUser } = require('../routes/pushRoutes');
 const { logError } = require('../utils/errorLogger');
+const { extractDocxText } = require('../utils/docxText');
+const { verifyChain } = require('../utils/auditChain');
+const { afterApprove } = require('../utils/postApproval');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. Lấy danh sách tin — có phân trang + tìm kiếm + lọc ngày ở server, tránh
@@ -98,7 +101,7 @@ exports.createNews = async (req, res) => {
         const {
             tieuDe, sapo, noiDung,
             kieu, ten, hinhAnh,
-            Category, StoragePath, StatusID
+            Category, StoragePath, StatusID, photoPath
         } = req.body;
 
         // ✅ Lấy AuthorID từ token đã xác thực, không tin dữ liệu client gửi lên
@@ -123,15 +126,16 @@ exports.createNews = async (req, res) => {
             .input('Content',     packedContent)
             .input('AuthorID',    parseInt(AuthorID) || null)
             .input('StoragePath', StoragePath || null)
+            .input('PhotoPath',   photoPath || null)
             .input('Category',    finalCategory)
             .input('StatusID',    parseInt(StatusID) || 1)
             .input('IsLocked',    0)
             .query(`
-                INSERT INTO dbo.Posts 
-                    (Title, Content, AuthorID, StoragePath, Category, StatusID, IsLocked, CreatedAt)
+                INSERT INTO dbo.Posts
+                    (Title, Content, AuthorID, StoragePath, PhotoPath, Category, StatusID, IsLocked, CreatedAt)
                 OUTPUT INSERTED.PostID
-                VALUES 
-                    (@Title, @Content, @AuthorID, @StoragePath, @Category, @StatusID, @IsLocked, GETDATE())
+                VALUES
+                    (@Title, @Content, @AuthorID, @StoragePath, @PhotoPath, @Category, @StatusID, @IsLocked, GETDATE())
             `);
 
         const newPostId = insertResult.recordset[0]?.PostID;
@@ -232,6 +236,24 @@ exports.approveNews = async (req, res) => {
         if (result.rowsAffected[0] === 0) {
             return res.status(404).json({ error: 'Không tìm thấy bài viết!' });
         }
+
+        if (statusId === 2) {
+            const postResult = await pool.request().input('PostID', id).query('SELECT Title, Content FROM dbo.Posts WHERE PostID = @PostID');
+            const post = postResult.recordset[0];
+            if (post) {
+                let ragText = post.Content;
+                try {
+                    const parsed = JSON.parse(post.Content);
+                    ragText = [parsed.sapo, parsed.noiDung].filter(Boolean).join('\n\n');
+                } catch { /* Content không phải JSON — dùng nguyên văn */ }
+
+                await afterApprove(pool, {
+                    postId: id, title: post.Title, contentBuffer: Buffer.from(post.Content, 'utf8'),
+                    approvedBy: req.user.UserID, source: 'status-approve', ragText
+                });
+            }
+        }
+
         res.json({ success: true, message: statusId === 2 ? 'Đã phê duyệt!' : 'Đã từ chối!' });
     } catch (err) {
         console.error('❌ [approveNews] Lỗi:', err.message);
@@ -279,6 +301,11 @@ exports.editorApprove = async (req, res) => {
         const post = postResult.recordset[0];
         if (!post) return res.status(404).json({ error: 'Không tìm thấy bài viết' });
 
+        // Đọc bytes file MỚI (đã upload xong, storagePath trỏ tới nó) trước khi ghi đè DB —
+        // đây là nội dung sẽ được duyệt, dùng để hash + trích text nạp fact-check.
+        const newFullPath = path.resolve(STORAGE_ROOT, storagePath.replace(/^Storage\//, ''));
+        const newFileBuffer = fs.existsSync(newFullPath) ? fs.readFileSync(newFullPath) : null;
+
         // Cập nhật DB TRƯỚC, xóa file cũ SAU — trước đây xóa file cũ trước UPDATE, nên nếu
         // UPDATE lỗi giữa chừng (deadlock, mất kết nối DB...) thì Posts.StoragePath vẫn trỏ
         // tới file đã bị xóa vĩnh viễn, không còn đường phục hồi.
@@ -294,6 +321,13 @@ exports.editorApprove = async (req, res) => {
                 const oldFullPath = path.resolve(STORAGE_ROOT, post.StoragePath.replace(/^Storage\//, ''));
                 if (fs.existsSync(oldFullPath)) fs.unlinkSync(oldFullPath);
             } catch (e) { console.log('⚠️ Không xóa được file cũ:', e.message); }
+        }
+
+        if (newFileBuffer) {
+            await afterApprove(pool, {
+                postId: id, title: post.Title, contentBuffer: newFileBuffer,
+                approvedBy: editorId, source: 'editor-approve', ragText: extractDocxText(newFileBuffer)
+            });
         }
 
         // ✅ Push thông báo cho CTV
@@ -317,6 +351,25 @@ exports.editorApprove = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // 8. Xuất file Word từ template
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. Chuỗi audit-trail (hash-chain) của bài viết — phát hiện sửa DB trực tiếp
+// ngoài luồng (không qua các nhánh approve ghi audit ở trên).
+// ─────────────────────────────────────────────────────────────────────────────
+exports.getAuditTrail = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request()
+            .input('PostID', id)
+            .query('SELECT * FROM dbo.PostApprovalAudit WHERE PostID = @PostID ORDER BY AuditID ASC');
+        const rows = result.recordset || [];
+        res.json({ history: rows, verified: verifyChain(rows) });
+    } catch (err) {
+        logError({ source: 'newsController.getAuditTrail', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
+    }
+};
+
 exports.exportStoryboard = async (req, res) => {
     try {
         const { kieu, tieuDe, ten, hinhAnh, sapo, noiDung } = req.body;

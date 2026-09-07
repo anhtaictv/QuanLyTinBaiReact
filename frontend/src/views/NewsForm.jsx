@@ -3,10 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { scanSensitive } from '../services/aiService';
 import { showToastSuccess } from '../utils/Toast';
-import { IconPlus, IconAlertCircle, IconFolder, IconX, IconSend, IconLoader } from '../components/icons';
+import { IconPlus, IconAlertCircle, IconFolder, IconX, IconSend, IconLoader, IconRefresh } from '../components/icons';
 import AIEditorialPanel from '../components/ai/AIEditorialPanel';
 import AICategorySuggest from '../components/ai/AICategorySuggest';
 import SensitiveDataWarning from '../components/ai/SensitiveDataWarning';
+import RagChecksPanel from '../components/ai/RagChecksPanel';
+import PhotoCapture from '../components/PhotoCapture';
+import useOfflineDraft from '../hooks/useOfflineDraft';
 
 const NewsForm = () => {
   const navigate    = useNavigate();
@@ -27,13 +30,22 @@ const NewsForm = () => {
     noiDung: ''
   });
   const [file,       setFile]       = useState(null);
+  const [photoPath,  setPhotoPath]  = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error,      setError]      = useState('');
   const [sensitiveResult, setSensitiveResult] = useState(null); // { piiMatches, wordingWarnings }
 
+  const { restoredDraft, clearDraft, dismissDraft } = useOfflineDraft('newsform-draft', { ...formData, categoryId: String(categoryId) });
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleRestoreDraft = () => {
+    setFormData({ tieuDe: restoredDraft.tieuDe || '', sapo: restoredDraft.sapo || '', noiDung: restoredDraft.noiDung || '' });
+    if (restoredDraft.categoryId) setCategoryId(parseInt(restoredDraft.categoryId));
+    dismissDraft();
   };
 
   const handleSubmit = async (e) => {
@@ -95,9 +107,11 @@ const NewsForm = () => {
         hinhAnh:     '',
         Category:    parseInt(categoryId),
         StoragePath: storedPath,
-        StatusID:    1
+        StatusID:    1,
+        photoPath
       });
 
+      clearDraft();
       showToastSuccess('Đã gửi bài lên hệ thống thành công!');
       navigate('/news');
     } catch (err) {
@@ -124,6 +138,16 @@ const NewsForm = () => {
       {error && (
         <div style={{ display: 'flex', gap: 8, color: 'var(--danger)', background: 'var(--danger-soft)', padding: 10, borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 13.5 }}>
           <IconAlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />{error}
+        </div>
+      )}
+
+      {restoredDraft && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--warning-soft)', color: 'var(--warning)', padding: 10, borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 13 }}>
+          <span>Phát hiện bản nháp chưa gửi từ trước.</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={handleRestoreDraft} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, background: 'var(--warning)', color: 'white', border: 'none' }}><IconRefresh size={13} />Khôi phục</button>
+            <button type="button" onClick={dismissDraft} style={{ padding: '6px 12px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, background: 'transparent', border: '1px solid var(--warning)', color: 'var(--warning)' }}>Bỏ qua</button>
+          </div>
         </div>
       )}
 
@@ -199,6 +223,8 @@ const NewsForm = () => {
           onApplySapo={(sapo) => setFormData(prev => ({ ...prev, sapo }))}
         />
 
+        <RagChecksPanel content={formData.noiDung} />
+
         {/* Upload file */}
         <div style={{ marginBottom: 24, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
           <label style={labelStyle}>
@@ -218,6 +244,12 @@ const NewsForm = () => {
           <small style={{ color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
             Chỉ chấp nhận file .doc và .docx
           </small>
+        </div>
+
+        {/* Ảnh hiện trường (tùy chọn) */}
+        <div style={{ marginBottom: 24 }}>
+          <label style={labelStyle}>Ảnh hiện trường (tùy chọn)</label>
+          <PhotoCapture photoPath={photoPath} onUploaded={setPhotoPath} onRemove={() => setPhotoPath('')} />
         </div>
 
         {/* Nút */}
