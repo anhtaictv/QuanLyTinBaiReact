@@ -70,7 +70,7 @@ jobs:
           # khong can chay tay tren VPS nua. Bound timeout rieng cho buoc nay (khac
           # poolPromise trong config/db.js retry vo han theo thiet ke cho server chinh)
           # de 1 lan DB tam thoi chua san sang khong treo ca pipeline deploy.
-          foreach ($script in @('scripts/create-news-digest-table.js', 'scripts/add-device-to-push-subscriptions.js', 'scripts/create-post-approval-audit.js', 'scripts/add-photo-path-to-posts.js')) {
+          foreach ($script in @('scripts/create-news-digest-table.js', 'scripts/add-device-to-push-subscriptions.js', 'scripts/create-post-approval-audit.js', 'scripts/add-photo-path-to-posts.js', 'scripts/drop-userid-unique-push-subscriptions.js')) {
             Write-Output "Running migration: $script"
             $proc = Start-Process -FilePath "node" -ArgumentList $script -NoNewWindow -PassThru
             $proc.Handle | Out-Null   # bat buoc .NET cache handle ngay, khong ExitCode doc ra rong sau khi exit
