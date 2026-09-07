@@ -1,9 +1,12 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
+const multer = require('multer');
 const router = express.Router();
 const aiController = require('../controllers/aiController');
 const ragController = require('../controllers/ragController');
 const { requireRoles } = require('../middleware/authMiddleware');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 // Rate limit riêng, chặt hơn apiLimiter chung (600 lượt/5 phút): mỗi lượt hỏi trợ lý
 // chiếm Ollama máy A hàng chục giây, và nếu Ollama chết thì rơi xuống Claude tính tiền
@@ -22,6 +25,9 @@ const assistantLimiter = rateLimit({
 const RAG_MANAGE_ROLES = ['admin', 'trưởng ban', 'thư ký'];
 
 router.get('/health', aiController.health);
+
+// Module rã băng phỏng vấn — file audio → Speech-to-Text (PhoWhisper) qua AI Gateway
+router.post('/transcribe', upload.single('file'), aiController.transcribe);
 
 // Module 5: Trợ lý hỏi đáp tự do (hội thoại nhiều lượt, hỏi chủ đề gì cũng được)
 router.post('/chat', assistantLimiter, aiController.chat);

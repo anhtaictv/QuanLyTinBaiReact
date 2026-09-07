@@ -182,3 +182,32 @@ exports.chat = async (req, res) => {
         handleAiError(err, req, res, 'aiController.chat');
     }
 };
+
+exports.transcribe = async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'Không có file audio' });
+
+    const formData = new FormData();
+    formData.append('file', new Blob([req.file.buffer], { type: req.file.mimetype }), req.file.originalname);
+
+    const aiGatewayUrl = (process.env.AI_GATEWAY_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
+    const apiKey = process.env.AI_GATEWAY_API_KEY || '';
+
+    try {
+        const response = await fetch(`${aiGatewayUrl}/transcribe`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${apiKey}` },
+            body: formData,
+            signal: AbortSignal.timeout(120000)
+        });
+
+        if (!response.ok) throw new Error(`Gateway transcribe lỗi ${response.status}`);
+        const data = await response.json();
+        res.json({ text: data.text || '' });
+    } catch (err) {
+        console.error('[aiController] transcribe error:', err);
+        if (err instanceof aiGateway.AiGatewayUnavailableError || err.message.includes('timeout')) {
+            return res.status(503).json({ error: 'Lỗi rã băng: không kết nối AI Gateway' });
+        }
+        res.status(500).json({ error: 'Lỗi rã băng: ' + err.message });
+    }
+};
