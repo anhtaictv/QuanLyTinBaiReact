@@ -7,6 +7,7 @@ const { poolPromise } = require('../config/db');
 const { sendPushToUser } = require('./pushRoutes');
 const { logError } = require('../utils/errorLogger');
 const { requireRoles } = require('../middleware/authMiddleware');
+const { afterApprove } = require('../utils/postApproval');
 
 // Chỉ role được duyệt bài mới được đưa bài qua Google Docs / hoàn tất chỉnh sửa —
 // route này ghi đè file trên VPS và set StatusID=2 (duyệt), trước đây chỉ có
@@ -240,6 +241,22 @@ router.post('/complete/:driveFileId', requireRoles(...APPROVE_ROLES), async (req
             `/news/${postId}`
           ).catch(err => console.warn('⚠️ [Push] Gửi thông báo thất bại:', err.message));
           console.log(`📲 [Push] Đã gửi thông báo cho AuthorID=${AuthorID}`);
+
+          // Fact-check corpus + hash-chain audit: dùng đúng bytes vừa ghi đè ở localPath và
+          // 1 export text/plain riêng (docx export ở trên không đọc lại được dạng text thuần).
+          try {
+            const docxBuffer = fs.readFileSync(localPath);
+            const textExportRes = await drive.files.export(
+              { fileId: driveFileId, mimeType: 'text/plain' },
+              { responseType: 'text' }
+            );
+            await afterApprove(pool, {
+              postId, title: Title, contentBuffer: docxBuffer,
+              approvedBy: req.user.UserID, source: 'drive-complete', ragText: textExportRes.data
+            });
+          } catch (auditErr) {
+            logError({ source: 'driveRoutes.complete.afterApprove', message: auditErr.message, stack: auditErr.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+          }
         }
 
       } catch (dbErr) {
@@ -268,6 +285,43 @@ router.post('/complete/:driveFileId', requireRoles(...APPROVE_ROLES), async (req
     console.error('❌ [Drive] Complete lỗi:', friendly);
     logError({ source: 'driveRoutes.complete', message: friendly, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
     res.status(500).json({ error: 'Lỗi khi export file từ Drive: ' + friendly });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/drive/diff/:driveFileId
+// So sánh bản gốc CTV gửi (revision đầu tiên) với bản đang sửa (revision mới nhất) —
+// CHỈ trong phạm vi 1 phiên sửa đang mở, vì file Drive bị xóa ngay sau khi hoàn tất
+// duyệt (xem /complete) nên không có lịch sử đa phiên bản để so sánh xa hơn.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get('/diff/:driveFileId', requireRoles(...APPROVE_ROLES), async (req, res) => {
+  const { driveFileId } = req.params;
+
+  try {
+    const revList = await drive.revisions.list({ fileId: driveFileId, fields: 'revisions(id, modifiedTime, exportLinks)' });
+    const revisions = revList.data.revisions || [];
+    if (revisions.length === 0) return res.status(404).json({ error: 'Chưa có phiên bản nào để so sánh.' });
+
+    const first = revisions[0];
+    const last  = revisions[revisions.length - 1];
+
+    const { token } = await oauth2Client.getAccessToken();
+    const fetchRevisionText = async (rev) => {
+      const link = rev.exportLinks?.['text/plain'];
+      if (!link) return '';
+      const r = await fetch(link, { headers: { Authorization: `Bearer ${token}` } });
+      return r.ok ? r.text() : '';
+    };
+
+    const [originalText, currentText] = await Promise.all([fetchRevisionText(first), fetchRevisionText(last)]);
+    res.json({ originalText, currentText, singleRevision: first.id === last.id });
+
+  } catch (err) {
+    const friendly = friendlyDriveError(err);
+    console.error('❌ [Drive] Diff lỗi:', friendly);
+    logError({ source: 'driveRoutes.diff', message: friendly, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+    res.status(500).json({ error: 'Lỗi khi lấy lịch sử phiên bản: ' + friendly });
   }
 });
 

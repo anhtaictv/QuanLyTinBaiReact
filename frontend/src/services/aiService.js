@@ -19,6 +19,11 @@ export const ingestRagDocument = (title, content) => api.post('/ai/rag/documents
 export const deleteRagDocument = (sourceId) => api.delete(`/ai/rag/documents/${sourceId}`);
 export const askRag = (question) => api.post('/ai/rag/ask', { question });
 
+// AI giám sát chất lượng: đối chiếu bài viết với corpus bài đã duyệt (fact-check) hoặc
+// cẩm nang tòa soạn (consistency) — cả 2 dùng chung kho tri thức RAG ở trên.
+export const factCheckContent = (content) => api.post('/ai/rag/factcheck', { content });
+export const checkConsistency = (content) => api.post('/ai/rag/consistency', { content });
+
 // Module 5: Trợ lý hỏi tự do (hội thoại nhiều lượt)
 // messages: [{ role: 'user' | 'assistant', content: string }] — gửi lại toàn bộ hội thoại
 // mỗi lượt vì backend không lưu trạng thái phiên chat.

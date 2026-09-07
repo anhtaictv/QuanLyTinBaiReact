@@ -39,8 +39,11 @@ const NewsDigest = () => {
         setRefreshing(true);
         try {
             const res = await api.post('/news-digest/refresh');
-            const { matched, inserted } = res.data;
-            alert(`Đã quét xong: khớp ${matched} bài, thêm mới ${inserted} bài.`);
+            const { matched, inserted, sourceErrors } = res.data;
+            const errorNote = sourceErrors?.length
+              ? `\n\nLỗi khi lấy tin từ: ${sourceErrors.map(e => `${e.source} (${e.message})`).join(', ')}`
+              : '';
+            alert(`Đã quét xong: khớp ${matched} bài, thêm mới ${inserted} bài.${errorNote}`);
             await fetchData();
         } catch (err) {
             alert('Lỗi khi cập nhật tin: ' + (err.response?.data?.error || 'Lỗi kết nối'));

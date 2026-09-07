@@ -1,3 +1,10 @@
+import { precacheAndRoute } from 'workbox-precaching';
+
+// Precache SPA shell (JS/CSS/HTML đã hash theo build của Vite) để app cài đặt được và tải
+// lại được khi offline. KHÔNG cache /api/* ở đây — dữ liệu duyệt bài/quyền hạn không nên
+// phục vụ offline-stale (xem vite.config.js, chỉ dùng injectManifest, không runtime caching).
+precacheAndRoute(self.__WB_MANIFEST);
+
 self.addEventListener('push', (event) => {
   if (!event.data) return;
  

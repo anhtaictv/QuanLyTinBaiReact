@@ -49,4 +49,9 @@ router.post('/rag/documents', requireRoles(...RAG_MANAGE_ROLES), ragController.i
 router.delete('/rag/documents/:sourceId', requireRoles(...RAG_MANAGE_ROLES), ragController.deleteDoc);
 router.post('/rag/ask', ragController.ask);
 
+// AI giám sát chất lượng: đối chiếu bài viết với corpus bài đã duyệt (fact-check) hoặc
+// cẩm nang tòa soạn (consistency) — cùng nhóm quyền với /rag/ask, không giới hạn thêm.
+router.post('/rag/factcheck', ragController.factcheck);
+router.post('/rag/consistency', ragController.consistency);
+
 module.exports = router;

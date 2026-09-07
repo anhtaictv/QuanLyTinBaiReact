@@ -19,6 +19,7 @@ router.get('/', newsController.getAllNews);
 router.post('/', createNewsRules, handleValidation, newsController.createNews);
 router.get('/stats', newsController.getDashboardStats);
 router.put('/:id/status', requireRoles(...APPROVE_ROLES), newsController.approveNews);
+router.get('/:id/audit-trail', requireRoles(...APPROVE_ROLES), newsController.getAuditTrail);
 
 // ✅ Chỉ Admin mới được xóa
 router.delete('/:id', isAdmin, newsController.deleteNews);

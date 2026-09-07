@@ -53,17 +53,30 @@ function cosineSimilarity(a, b) {
     return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-async function addDocument(title, text) {
-    const sourceId = crypto.randomUUID();
+// type phân biệt corpus dùng cho việc gì ('style-guide' = cẩm nang tòa soạn nạp tay,
+// 'approved-article' = tự động nạp từ bài đã duyệt — xem ingestApprovedArticle).
+// sourceId cho phép gọi lại (upsert) đúng 1 nguồn thay vì luôn tạo nguồn mới — dùng khi
+// nạp lại nội dung của cùng 1 bài viết mỗi lần duyệt lại.
+async function addDocument(title, text, { type = 'style-guide', sourceId } = {}) {
+    const finalSourceId = sourceId || crypto.randomUUID();
     const chunks = chunkText(text);
     const index = loadIndex();
     const createdAt = new Date().toISOString();
     for (const chunk of chunks) {
         const embedding = await aiGateway.embed(chunk);
-        index.push({ id: crypto.randomUUID(), sourceId, title, chunk, embedding, createdAt });
+        index.push({ id: crypto.randomUUID(), sourceId: finalSourceId, title, chunk, embedding, createdAt, type });
     }
     saveIndex(index);
-    return { sourceId, chunkCount: chunks.length };
+    return { sourceId: finalSourceId, chunkCount: chunks.length };
+}
+
+// Nạp bài đã duyệt vào corpus fact-check — xóa bản cũ (nếu có) rồi nạp lại, tránh phình
+// index vô hạn khi 1 bài được duyệt lại nhiều lần (editor sửa xong duyệt lại...).
+async function ingestApprovedArticle(postId, title, text) {
+    if (!text || !text.trim()) return { sourceId: `post-${postId}`, chunkCount: 0 };
+    const sourceId = `post-${postId}`;
+    deleteDocument(sourceId);
+    return addDocument(title, text, { type: 'approved-article', sourceId });
 }
 
 function listDocuments() {
@@ -86,12 +99,13 @@ function deleteDocument(sourceId) {
     return removed;
 }
 
-function search(queryEmbedding, topK = 4) {
+function search(queryEmbedding, topK = 4, { type } = {}) {
     const index = loadIndex();
     return index
+        .filter(item => !type || item.type === type)
         .map(item => ({ ...item, score: cosineSimilarity(queryEmbedding, item.embedding) }))
         .sort((a, b) => b.score - a.score)
         .slice(0, topK);
 }
 
-module.exports = { addDocument, listDocuments, deleteDocument, search };
+module.exports = { addDocument, listDocuments, deleteDocument, search, ingestApprovedArticle };

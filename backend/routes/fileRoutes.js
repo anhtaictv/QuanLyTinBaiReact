@@ -6,6 +6,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { poolPromise } = require('../config/db');
 const { logError } = require('../utils/errorLogger');
+const { IMAGE_EXTS } = require('../config/chatUpload');
 
 const STORAGE_ROOT = process.env.STORAGE_ROOT || path.join(__dirname, '../uploads');
 
@@ -35,11 +36,11 @@ const upload = multer({
     storage,
     limits: { fileSize: 100 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
-        const allowed = ['.doc', '.docx', '.pdf'];
+        const allowed = [...IMAGE_EXTS, '.doc', '.docx', '.pdf'];
         if (allowed.includes(path.extname(file.originalname).toLowerCase())) {
             cb(null, true);
         } else {
-            cb(new Error('Chỉ chấp nhận .doc, .docx, .pdf'));
+            cb(new Error('Chỉ chấp nhận ảnh, .doc, .docx, .pdf'));
         }
     }
 });

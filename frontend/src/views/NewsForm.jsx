@@ -3,10 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { scanSensitive } from '../services/aiService';
 import { showToastSuccess } from '../utils/Toast';
-import { IconPlus, IconAlertCircle, IconFolder, IconX, IconSend, IconLoader } from '../components/icons';
+import { IconPlus, IconAlertCircle, IconFolder, IconX, IconSend, IconLoader, IconRefresh, IconMic } from '../components/icons';
 import AIEditorialPanel from '../components/ai/AIEditorialPanel';
 import AICategorySuggest from '../components/ai/AICategorySuggest';
 import SensitiveDataWarning from '../components/ai/SensitiveDataWarning';
+import RagChecksPanel from '../components/ai/RagChecksPanel';
+import PhotoCapture from '../components/PhotoCapture';
+import InterviewTranscribeSidebar from '../components/ai/InterviewTranscribeSidebar';
+import useOfflineDraft from '../hooks/useOfflineDraft';
 
 const NewsForm = () => {
   const navigate    = useNavigate();
@@ -27,13 +31,30 @@ const NewsForm = () => {
     noiDung: ''
   });
   const [file,       setFile]       = useState(null);
+  const [photoPath,  setPhotoPath]  = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error,      setError]      = useState('');
   const [sensitiveResult, setSensitiveResult] = useState(null); // { piiMatches, wordingWarnings }
+  const [showTranscribe, setShowTranscribe] = useState(false);
+
+  const { restoredDraft, clearDraft, dismissDraft } = useOfflineDraft('newsform-draft', { ...formData, categoryId: String(categoryId) });
+
+  // Chèn NỐI vào cuối field đang có (không ghi đè) — phóng viên có thể đọc nhiều đoạn rời
+  // rạc trong lúc phỏng vấn rồi chèn dần, không mất nội dung đã gõ tay trước đó.
+  const appendField = (field, text) => {
+    if (!text) return;
+    setFormData(prev => ({ ...prev, [field]: prev[field] ? `${prev[field]}\n\n${text}` : text }));
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleRestoreDraft = () => {
+    setFormData({ tieuDe: restoredDraft.tieuDe || '', sapo: restoredDraft.sapo || '', noiDung: restoredDraft.noiDung || '' });
+    if (restoredDraft.categoryId) setCategoryId(parseInt(restoredDraft.categoryId));
+    dismissDraft();
   };
 
   const handleSubmit = async (e) => {
@@ -95,9 +116,11 @@ const NewsForm = () => {
         hinhAnh:     '',
         Category:    parseInt(categoryId),
         StoragePath: storedPath,
-        StatusID:    1
+        StatusID:    1,
+        photoPath
       });
 
+      clearDraft();
       showToastSuccess('Đã gửi bài lên hệ thống thành công!');
       navigate('/news');
     } catch (err) {
@@ -124,6 +147,16 @@ const NewsForm = () => {
       {error && (
         <div style={{ display: 'flex', gap: 8, color: 'var(--danger)', background: 'var(--danger-soft)', padding: 10, borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 13.5 }}>
           <IconAlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />{error}
+        </div>
+      )}
+
+      {restoredDraft && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--warning-soft)', color: 'var(--warning)', padding: 10, borderRadius: 'var(--radius-sm)', marginBottom: 16, fontSize: 13 }}>
+          <span>Phát hiện bản nháp chưa gửi từ trước.</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={handleRestoreDraft} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, background: 'var(--warning)', color: 'white', border: 'none' }}><IconRefresh size={13} />Khôi phục</button>
+            <button type="button" onClick={dismissDraft} style={{ padding: '6px 12px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, background: 'transparent', border: '1px solid var(--warning)', color: 'var(--warning)' }}>Bỏ qua</button>
+          </div>
         </div>
       )}
 
@@ -183,7 +216,16 @@ const NewsForm = () => {
 
         {/* Nội dung */}
         <div style={{ marginBottom: 20 }}>
-          <label style={labelStyle}>Nội dung tóm tắt</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <label style={labelStyle}>Nội dung tóm tắt</label>
+            <button
+              type="button"
+              onClick={() => setShowTranscribe(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text-muted)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 12, fontWeight: 600, marginBottom: 6 }}
+            >
+              <IconMic size={12} />Rã băng phỏng vấn
+            </button>
+          </div>
           <textarea
             name="noiDung" value={formData.noiDung}
             onChange={handleInputChange}
@@ -198,6 +240,8 @@ const NewsForm = () => {
           onApplyTitle={(title) => setFormData(prev => ({ ...prev, tieuDe: title }))}
           onApplySapo={(sapo) => setFormData(prev => ({ ...prev, sapo }))}
         />
+
+        <RagChecksPanel content={formData.noiDung} />
 
         {/* Upload file */}
         <div style={{ marginBottom: 24, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
@@ -220,6 +264,12 @@ const NewsForm = () => {
           </small>
         </div>
 
+        {/* Ảnh hiện trường (tùy chọn) */}
+        <div style={{ marginBottom: 24 }}>
+          <label style={labelStyle}>Ảnh hiện trường (tùy chọn)</label>
+          <PhotoCapture photoPath={photoPath} onUploaded={setPhotoPath} onRemove={() => setPhotoPath('')} />
+        </div>
+
         {/* Nút */}
         <div style={{ display: 'flex', gap: 12 }}>
           <button
@@ -236,6 +286,14 @@ const NewsForm = () => {
           </button>
         </div>
       </form>
+
+      {showTranscribe && (
+        <InterviewTranscribeSidebar
+          onClose={() => setShowTranscribe(false)}
+          onInsertSapo={(text) => appendField('sapo', text)}
+          onInsertNoiDung={(text) => appendField('noiDung', text)}
+        />
+      )}
     </div>
   );
 };
