@@ -25,8 +25,11 @@ function handleAiError(err, req, res, source) {
 }
 
 exports.health = async (req, res) => {
-    const connected = await aiGateway.isAvailable();
-    res.json({ connected });
+    const [connected, whisperConnected] = await Promise.all([
+        aiGateway.isAvailable(),
+        aiGateway.isWhisperAvailable()
+    ]);
+    res.json({ connected, whisperConnected });
 };
 
 exports.proofread = async (req, res) => {
@@ -174,6 +177,22 @@ exports.chat = async (req, res) => {
     }
 };
 
+// Rã băng chạy lâu hơn hẳn một lượt chat: file 25 giây vẫn phải đi qua Tailscale sang máy A
+// rồi mới tới lượt GPU chạy PhoWhisper.
+const TRANSCRIBE_TIMEOUT_MS = 120000;
+
+// transcribe gọi thẳng fetch chứ KHÔNG đi qua aiGatewayClient, nên không có
+// AiGatewayUnavailableError nào để bắt — lớp lỗi đó chỉ được ném bên trong client kia.
+// Không tự nhận diện ở đây thì gateway chết sẽ rơi xuống nhánh 500 kèm nguyên văn
+// "fetch failed", đúng thứ vô nghĩa với người dùng cuối.
+class TranscribeGatewayDownError extends Error {
+    constructor(cause) {
+        super('Lỗi rã băng: không kết nối AI Gateway');
+        this.name = 'TranscribeGatewayDownError';
+        this.cause = cause;
+    }
+}
+
 exports.transcribe = async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'Không có file audio' });
 
@@ -184,21 +203,66 @@ exports.transcribe = async (req, res) => {
     const apiKey = process.env.AI_GATEWAY_API_KEY || '';
 
     try {
-        const response = await fetch(`${aiGatewayUrl}/transcribe`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${apiKey}` },
-            body: formData,
-            signal: AbortSignal.timeout(120000)
-        });
+        let response;
+        try {
+            response = await fetch(`${aiGatewayUrl}/transcribe`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${apiKey}` },
+                body: formData,
+                signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS)
+            });
+        } catch (err) {
+            // fetch của Node ném TypeError('fetch failed') khi không nối được (gateway tắt,
+            // sai cổng, Tailscale rớt) và DOMException khi AbortSignal.timeout bắn. Cả hai
+            // đều là "gateway không trả lời" chứ không phải lỗi lập trình.
+            throw new TranscribeGatewayDownError(err);
+        }
 
-        if (!response.ok) throw new Error(`Gateway transcribe lỗi ${response.status}`);
+        // Gateway trả {error:{message}} với câu tiếng Việt nói rõ nguyên nhân (máy A tắt,
+        // file quá dài, định dạng không nhận...). Đè bằng "Gateway transcribe lỗi 400" thì
+        // client mất hết thông tin đó — quan trọng khi rã băng dài, vì sidebar báo lỗi theo
+        // từng đoạn và người dùng cần biết nên thử lại hay đổi file.
+        if (!response.ok) {
+            const detail = await response.json().catch(() => null);
+
+            // 401/403 = khoá AI_GATEWAY_API_KEY sai/lệch với gateway. Câu lỗi của gateway
+            // ("Thiếu hoặc sai Authorization: Bearer <GATEWAY_API_KEY>") được viết cho người
+            // vận hành gateway, KHÔNG phải cho phóng viên: chuyển nguyên văn ra là khoe với
+            // mọi user rằng có một gateway nội bộ dùng Bearer token và tên biến môi trường của
+            // nó. Xử lý giống AiGatewayAuthError ở handleAiError: ghi log để còn sửa .env,
+            // nhưng chỉ trả câu chung chung cho người dùng.
+            if (response.status === 401 || response.status === 403) {
+                logError({
+                    source: 'aiController.transcribe(auth)',
+                    message: `AI Gateway từ chối khoá khi rã băng (HTTP ${response.status}): ${detail?.error?.message || '(không có nội dung)'}`,
+                    userId: req.user?.UserID, method: req.method, path: req.originalUrl
+                });
+                return res.status(503).json({ error: 'Rã băng đang bị lỗi cấu hình, vui lòng báo quản trị viên.', connected: false });
+            }
+
+            const gatewayError = new Error(detail?.error?.message || `Gateway transcribe lỗi ${response.status}`);
+            gatewayError.status = response.status;
+            throw gatewayError;
+        }
         const data = await response.json();
         res.json({ text: data.text || '' });
     } catch (err) {
-        console.error('[aiController] transcribe error:', err);
-        if (err instanceof aiGateway.AiGatewayUnavailableError || err.message.includes('timeout')) {
-            return res.status(503).json({ error: 'Lỗi rã băng: không kết nối AI Gateway' });
+        // Gateway/máy A chưa chạy là trạng thái BÌNH THƯỜNG ở đây (xem handleAiError) —
+        // không đổ vào ErrorLogs/Telegram cho nhiễu báo lỗi.
+        if (err instanceof TranscribeGatewayDownError) {
+            return res.status(503).json({ error: err.message, connected: false });
         }
-        res.status(500).json({ error: 'Lỗi rã băng: ' + err.message });
+
+        // Giữ nguyên mã lỗi của gateway: 400 (file sai định dạng / quá dài) không phải lỗi
+        // server, còn 503 (máy A tắt) cần khác 500 để bên gọi biết thử lại sau là được.
+        const status = err.status >= 400 && err.status < 600 ? err.status : 500;
+
+        // Chỉ 500 mới là lỗi bất ngờ đáng gọi người sửa; 4xx là file của người dùng, 503 là
+        // hạ tầng tắt. Dùng logError như mọi handler khác trong file thay vì console.error,
+        // không thì lỗi rã băng không bao giờ tới được đường cảnh báo của ops.
+        if (status === 500) {
+            logError({ source: 'aiController.transcribe', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        }
+        res.status(status).json({ error: 'Lỗi rã băng: ' + err.message });
     }
 };

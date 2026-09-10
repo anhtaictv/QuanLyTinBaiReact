@@ -24,6 +24,19 @@ export const askRag = (question) => api.post('/ai/rag/ask', { question });
 export const factCheckContent = (content) => api.post('/ai/rag/factcheck', { content });
 export const checkConsistency = (content) => api.post('/ai/rag/consistency', { content });
 
+// Rã băng file ghi âm (PhoWhisper trên máy A).
+//
+// Phải đi qua `api` chứ không phải fetch trực tiếp: interceptor của api.js mới là chỗ gắn
+// Authorization, mà /api/ai/* đều nằm sau verifyToken — gọi fetch tay là ăn 401 ngay.
+// Content-Type để undefined cho trình duyệt tự điền kèm boundary của multipart; giữ
+// 'application/json' mặc định của instance thì backend không parse ra file.
+// signal: để bên gọi hủy được khi người dùng đóng bảng giữa lúc đang rã băng dài.
+export const transcribeAudio = (file, { signal } = {}) => {
+  const formData = new FormData();
+  formData.append('file', file, file.name);
+  return api.post('/ai/transcribe', formData, { signal, headers: { 'Content-Type': undefined } });
+};
+
 // Module 5: Trợ lý hỏi tự do (hội thoại nhiều lượt)
 // messages: [{ role: 'user' | 'assistant', content: string }] — gửi lại toàn bộ hội thoại
 // mỗi lượt vì backend không lưu trạng thái phiên chat.
