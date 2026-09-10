@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import Login from './views/Login';
 import ForgotPassword from './views/ForgotPassword';
@@ -44,7 +44,28 @@ const AdminRoute = () => {
   return <Outlet />;
 };
 
+// Trước đây SW chỉ được đăng ký lúc user bật push notification (MainLayout.jsx), nên ai
+// không bật push thì không có SW (không sao), nhưng ai đã bật thì kẹt mãi ở bản JS/CSS
+// lúc SW cài lần đầu — sw.js giờ đã tự skipWaiting()/clientsClaim(), còn ở đây chỉ cần
+// đăng ký ngay khi mở app (không đợi user bật push) + tự reload 1 lần khi SW mới nắm
+// quyền, để bản deploy mới tới tay user mà không cần họ đóng hết tab thủ công.
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('/sw.js');
+
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return;
+    reloading = true;
+    window.location.reload();
+  });
+}
+
 function App() {
+  useEffect(() => {
+    registerServiceWorker();
+  }, []);
+
   return (
     <Router>
       <Suspense fallback={<LoadingState label="Đang tải trang..." padding={80} />}>
