@@ -3,6 +3,7 @@ import api from '../services/api';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { IconList, IconPlus, IconUsers, IconTrendingUp, IconServer, IconDatabase } from '../components/icons';
 import LoadingState from '../components/LoadingState';
+import UpcomingTasksPanel from '../components/tasks/UpcomingTasksPanel';
 
 const Dashboard = () => {
     const [stats, setStats] = useState({ TotalPosts: 0, TotalUsers: 0, PostsToday: 0 });
@@ -127,6 +128,9 @@ const Dashboard = () => {
                     </LineChart>
                 </ResponsiveContainer>
             </div>
+
+            {/* Việc được giao sắp tới hạn — tự ẩn khi không có việc nào */}
+            <UpcomingTasksPanel />
 
             {/* Trạng thái kết nối */}
             <div style={panelStyle}>

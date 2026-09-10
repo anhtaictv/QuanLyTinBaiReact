@@ -19,6 +19,8 @@ const Chat            = lazy(() => import('./views/Chat'));
 const NewsDigest      = lazy(() => import('./views/NewsDigest'));
 const AIKnowledge     = lazy(() => import('./views/AIKnowledge'));
 const AiAssistant     = lazy(() => import('./views/AiAssistant'));
+const TaskCalendar    = lazy(() => import('./views/TaskCalendar'));
+const TaskAssign      = lazy(() => import('./views/TaskAssign'));
 
 // 1. Component bảo vệ Đăng nhập: Chưa đăng nhập thì không cho vào App
 const ProtectedRoute = () => {
@@ -73,6 +75,12 @@ function App() {
               <Route path="change-password" element={<ChangePassword />} />
               <Route path="chat" element={<Chat />} />
               <Route path="chat/:conversationId" element={<Chat />} />
+
+              {/* Lịch công việc: ai cũng xem được việc của mình. Trang giao việc để ở
+                  đây (không nằm trong AdminRoute) vì "Người duyệt" cũng được giao việc,
+                  mà AdminRoute lại không cho role đó vào — backend mới là chốt chặn. */}
+              <Route path="tasks" element={<TaskCalendar />} />
+              <Route path="tasks/assign" element={<TaskAssign />} />
 
               {/* CẤP ĐỘ 2: Chỉ dành riêng cho quyền Admin/Cấp cao */}
               <Route element={<AdminRoute />}>
