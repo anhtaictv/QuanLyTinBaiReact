@@ -25,8 +25,11 @@ function handleAiError(err, req, res, source) {
 }
 
 exports.health = async (req, res) => {
-    const connected = await aiGateway.isAvailable();
-    res.json({ connected });
+    const [connected, whisperConnected] = await Promise.all([
+        aiGateway.isAvailable(),
+        aiGateway.isWhisperAvailable()
+    ]);
+    res.json({ connected, whisperConnected });
 };
 
 exports.proofread = async (req, res) => {
