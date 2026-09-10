@@ -44,7 +44,9 @@ const sectionLabel = {
 //    nhận tối đa 30 giây mỗi lượt, nên file dài được cắt thành từng đoạn 25s ở client rồi
 //    rã tuần tự và nối chữ lại — xem utils/audioChunk.js để biết vì sao có trần đó.
 const InterviewTranscribe = () => {
-  const [listening, setListening] = useState(false);
+  // 3 trạng thái chứ không phải cờ bật/tắt: giữa lúc bấm và lúc micro thật sự mở có một
+  // khoảng trống, trước đây khoảng đó trông y hệt "không có gì xảy ra".
+  const [micState, setMicState] = useState('idle'); // idle | starting | listening
   const [transcript, setTranscript] = useState('');
   const [interim, setInterim] = useState('');
   const [error, setError] = useState('');            // lỗi của phần đọc trực tiếp
@@ -53,6 +55,8 @@ const InterviewTranscribe = () => {
   const [progress, setProgress] = useState(null); // { current, total } khi đang rã băng nhiều đoạn
   const recognitionRef = useRef(null);
   const wantListeningRef = useRef(false); // để onend biết có nên tự khởi động lại không
+  const gotResultRef = useRef(false);    // lượt nghe này đã ra được chữ nào chưa
+  const hadErrorRef = useRef(false);     // đã có câu lỗi rồi thì đừng chồng thêm câu chung chung
   const fileInputRef = useRef(null);
   const transcriptRef = useRef(null);
   const abortRef = useRef(null); // AbortController của lượt rã băng đang chạy
@@ -64,7 +68,14 @@ const InterviewTranscribe = () => {
     recognition.continuous = true;
     recognition.interimResults = true;
 
+    // Chrome chỉ phát onstart khi micro đã mở thật. Không bám vào đây thì nút nhảy sang
+    // "Đang nghe" ngay lúc bấm, kể cả khi micro chưa bao giờ mở được.
+    recognition.onstart = () => {
+      setMicState('listening');
+    };
+
     recognition.onresult = (event) => {
+      gotResultRef.current = true;
       let finalChunk = '';
       let interimChunk = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -83,13 +94,14 @@ const InterviewTranscribe = () => {
         'audio-capture': 'Không tìm thấy micro trên thiết bị này.',
         'network': 'Mất kết nối mạng khi nhận diện giọng nói.',
       };
+      hadErrorRef.current = true;
       setError(messages[event.error] || `Lỗi nhận diện giọng nói: ${event.error}`);
 
       // onend chạy ngay sau onerror. Không hạ cờ ở đây thì nó khởi động lại vô tận và
       // người dùng không bao giờ thoát được trạng thái "Đang nghe" giả.
       if (FATAL_SPEECH_ERRORS.has(event.error)) {
         wantListeningRef.current = false;
-        setListening(false);
+        setMicState('idle');
       }
     };
 
@@ -98,8 +110,16 @@ const InterviewTranscribe = () => {
     recognition.onend = () => {
       if (wantListeningRef.current) {
         try { recognition.start(); } catch { /* đã start rồi, bỏ qua */ }
-      } else {
-        setListening(false);
+        return;
+      }
+
+      setMicState('idle');
+      // Ca khó chịu nhất: micro mở bình thường, không lỗi, nhưng không ra chữ nào. Trước đây
+      // đúng nghĩa "bấm xong không có gì xảy ra" — không thông báo, không dấu vết. Thường là
+      // trình duyệt không ra được dịch vụ nhận diện của Google, hoặc thiết bị thu không có
+      // tiếng vào. Dù nguyên nhân gì, người dùng cũng phải được biết là nó đã chạy và trượt.
+      if (!gotResultRef.current && !hadErrorRef.current) {
+        setError('Micro bật được nhưng không nhận về chữ nào. Thường do trình duyệt không kết nối được dịch vụ nhận diện của Google, hoặc thiết bị thu không có tiếng vào. Cách chắc ăn: ghi âm ra file rồi dùng phần "Rã băng file ghi âm" bên dưới — phần đó chạy bằng máy chủ nội bộ, không cần Google.');
       }
     };
 
@@ -113,13 +133,18 @@ const InterviewTranscribe = () => {
 
   const toggleListening = useCallback(() => {
     if (!recognitionRef.current) return;
-    if (listening) {
+    if (micState !== 'idle') {
       wantListeningRef.current = false;
       recognitionRef.current.stop();
-      setListening(false);
+      setMicState('idle');
     } else {
       setError('');
       setInterim('');
+      gotResultRef.current = false;
+      hadErrorRef.current = false;
+      // Đổi trạng thái NGAY khi bấm, trước cả start(): nếu start() treo hay im lặng thì
+      // người dùng vẫn thấy giao diện phản hồi, không tưởng là nút chết.
+      setMicState('starting');
       // start() ném đồng bộ nếu đang chạy dở; không bắt thì lỗi thoát ra ngoài và
       // setListening(true) phía dưới không bao giờ chạy — nút trông như chết.
       try {
@@ -127,12 +152,12 @@ const InterviewTranscribe = () => {
       } catch (err) {
         setError(`Không khởi động được nhận diện giọng nói: ${err.message}`);
         wantListeningRef.current = false;
+        setMicState('idle');
         return;
       }
       wantListeningRef.current = true;
-      setListening(true);
     }
-  }, [listening]);
+  }, [micState]);
 
   // Hủy hẳn vòng rã băng khi rời trang. Để nó chạy tiếp thì một băng 20 phút bị bỏ đi
   // ở đoạn 5 vẫn nã tiếp ~43 request, chiếm 1 trong 4 slot upload của gateway suốt mấy phút
@@ -266,9 +291,12 @@ const InterviewTranscribe = () => {
           <>
             <button onClick={toggleListening} style={{
               ...btnStyle, width: '100%', justifyContent: 'center', padding: '11px 14px',
-              background: listening ? 'var(--danger)' : 'var(--accent)', color: '#fff', border: 'none'
+              background: micState === 'idle' ? 'var(--accent)' : 'var(--danger)', color: '#fff', border: 'none'
             }}>
-              <IconMic size={15} />{listening ? 'Đang nghe — bấm để dừng' : 'Bấm để bắt đầu đọc'}
+              <IconMic size={15} />
+              {micState === 'idle' && 'Bấm để bắt đầu đọc'}
+              {micState === 'starting' && 'Đang bật micro — bấm để hủy'}
+              {micState === 'listening' && 'Đang nghe — bấm để dừng'}
             </button>
 
             {error && (

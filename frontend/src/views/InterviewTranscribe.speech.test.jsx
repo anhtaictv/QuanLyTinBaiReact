@@ -27,7 +27,12 @@ const makeFakeRecognition = (errorCode, { failTimes = 1 } = {}) => {
   class FakeRecognition {
     start() {
       starts();
-      if (!errorCode || failures >= failTimes) return;
+      if (!errorCode || failures >= failTimes) {
+        // Chrome chỉ phát onstart khi micro mở thật — fake phải giữ đúng thứ tự đó,
+        // nếu không thì test không phân biệt được "đang bật" với "đang nghe".
+        Promise.resolve().then(() => this.onstart?.());
+        return;
+      }
       failures++;
       Promise.resolve().then(() => {
         this.onerror?.({ error: errorCode });
@@ -75,6 +80,38 @@ describe('Nút đọc trực tiếp', () => {
 
     // Assert
     await waitFor(() => expect(starts.mock.calls.length).toBeGreaterThan(1));
+  });
+
+  // Ca người dùng thật sự gặp: micro mở bình thường, không lỗi gì, nhưng không ra chữ nào.
+  // Không có sự kiện lỗi nào để bám vào, nên nếu không tự nói ra thì giao diện im như thóc
+  // và người dùng chỉ thấy "bấm xong không có gì xảy ra".
+  test('micro chạy nhưng không ra chữ nào thì vẫn phải báo, không im lặng', async () => {
+    // Arrange
+    const { FakeRecognition } = makeFakeRecognition(null);
+    const Page = await loadPage({ ctor: FakeRecognition });
+    render(<Page />);
+
+    // Act — bật lên, đợi micro mở, rồi bấm dừng mà chưa nói gì
+    fireEvent.click(screen.getByRole('button', { name: /Bấm để bắt đầu đọc/ }));
+    await waitFor(() => screen.getByRole('button', { name: /Đang nghe/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Đang nghe/ }));
+
+    // Assert
+    await waitFor(() => expect(screen.getByText(/không nhận về chữ nào/)).toBeInTheDocument());
+  });
+
+  test('bấm xong là giao diện đổi ngay, không đứng im chờ micro', async () => {
+    // Arrange
+    const { FakeRecognition } = makeFakeRecognition(null);
+    const Page = await loadPage({ ctor: FakeRecognition });
+    render(<Page />);
+
+    // Act
+    fireEvent.click(screen.getByRole('button', { name: /Bấm để bắt đầu đọc/ }));
+
+    // Assert — trạng thái trung gian phải hiện NGAY, trước khi micro kịp mở.
+    expect(screen.getByRole('button', { name: /Đang bật micro/ })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Đang nghe/ })).toBeInTheDocument());
   });
 
   test('trang mở bằng http thì nói thẳng là bị chặn, không đổ lỗi cho trình duyệt', async () => {
