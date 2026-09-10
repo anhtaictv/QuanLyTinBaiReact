@@ -8,6 +8,19 @@ const SpeechRecognitionCtor = typeof window !== 'undefined'
   ? (window.SpeechRecognition || window.webkitSpeechRecognition)
   : null;
 
+// Trình duyệt chỉ cho dùng micro ở secure context. Mở trang qua http:// thì đối tượng
+// webkitSpeechRecognition VẪN tồn tại (nên không rơi vào nhánh "trình duyệt không hỗ trợ"),
+// nhưng start() lập tức lỗi và không hề hiện hộp xin quyền — người dùng chỉ thấy bấm mà
+// không có gì xảy ra. Phải nói thẳng ra thay vì để họ đoán.
+const isSecureContext = typeof window === 'undefined' || window.isSecureContext !== false;
+
+// Những lỗi lặp lại y nguyên dù thử lại bao nhiêu lần. Gặp các lỗi này mà vẫn để onend
+// tự start() lại thì thành vòng lặp vô tận: start -> onerror -> onend -> start...
+// Nút kẹt ở "Đang nghe" mà không ra chữ nào.
+const FATAL_SPEECH_ERRORS = new Set([
+  'not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported', 'network'
+]);
+
 const card = {
   background: 'var(--surface)', border: '1px solid var(--border)', padding: 24,
   borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)'
@@ -71,6 +84,13 @@ const InterviewTranscribe = () => {
         'network': 'Mất kết nối mạng khi nhận diện giọng nói.',
       };
       setError(messages[event.error] || `Lỗi nhận diện giọng nói: ${event.error}`);
+
+      // onend chạy ngay sau onerror. Không hạ cờ ở đây thì nó khởi động lại vô tận và
+      // người dùng không bao giờ thoát được trạng thái "Đang nghe" giả.
+      if (FATAL_SPEECH_ERRORS.has(event.error)) {
+        wantListeningRef.current = false;
+        setListening(false);
+      }
     };
 
     // Chrome tự dừng recognition sau vài giây im lặng dù continuous=true — tự khởi động
@@ -100,8 +120,16 @@ const InterviewTranscribe = () => {
     } else {
       setError('');
       setInterim('');
+      // start() ném đồng bộ nếu đang chạy dở; không bắt thì lỗi thoát ra ngoài và
+      // setListening(true) phía dưới không bao giờ chạy — nút trông như chết.
+      try {
+        recognitionRef.current.start();
+      } catch (err) {
+        setError(`Không khởi động được nhận diện giọng nói: ${err.message}`);
+        wantListeningRef.current = false;
+        return;
+      }
       wantListeningRef.current = true;
-      recognitionRef.current.start();
       setListening(true);
     }
   }, [listening]);
@@ -204,6 +232,14 @@ const InterviewTranscribe = () => {
     }
   }, [appendTranscript, transcribeOne]);
 
+  // Gộp mọi lý do "không đọc được" vào một chỗ để giao diện nói đúng nguyên nhân thay vì
+  // luôn đổ cho trình duyệt — hai ca này trông giống hệt nhau với người dùng.
+  const speechBlockedReason = !SpeechRecognitionCtor
+    ? 'Trình duyệt này chưa hỗ trợ nhận diện giọng nói — dùng Chrome hoặc Edge.'
+    : !isSecureContext
+      ? 'Trang đang mở bằng http:// nên trình duyệt chặn micro và không hiện hộp xin quyền — mở lại bằng https:// rồi thử.'
+      : '';
+
   const hasText = Boolean(transcript.trim());
 
   return (
@@ -221,10 +257,10 @@ const InterviewTranscribe = () => {
 
         <div style={sectionLabel}>Đọc trực tiếp vào chữ</div>
 
-        {!SpeechRecognitionCtor ? (
+        {speechBlockedReason ? (
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: 'var(--warning)', background: 'var(--warning-soft)', padding: 10, borderRadius: 'var(--radius-sm)' }}>
             <IconAlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-            Trình duyệt này chưa hỗ trợ nhận diện giọng nói — dùng Chrome hoặc Edge.
+            {speechBlockedReason}
           </div>
         ) : (
           <>
