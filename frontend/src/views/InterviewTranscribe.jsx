@@ -1,16 +1,27 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { IconMic, IconX, IconAlertCircle, IconCheck, IconCloudUpload } from '../icons';
-import { SEGMENT_SECONDS, formatDuration, needsSplitting, prepareSegments, probeDuration } from '../../utils/audioChunk';
-import { transcribeAudio } from '../../services/aiService';
+import { IconMic, IconAlertCircle, IconCloudUpload, IconCopy, IconTrash } from '../components/icons';
+import { SEGMENT_SECONDS, formatDuration, needsSplitting, prepareSegments, probeDuration } from '../utils/audioChunk';
+import { transcribeAudio } from '../services/aiService';
+import { showToastSuccess, showToastError } from '../utils/Toast';
 
 const SpeechRecognitionCtor = typeof window !== 'undefined'
   ? (window.SpeechRecognition || window.webkitSpeechRecognition)
   : null;
 
+const card = {
+  background: 'var(--surface)', border: '1px solid var(--border)', padding: 24,
+  borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)'
+};
+
 const btnStyle = {
   display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px',
   border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)',
   borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 13, fontWeight: 600
+};
+
+const sectionLabel = {
+  fontSize: 12.5, fontWeight: 700, color: 'var(--text-muted)',
+  marginBottom: 8, textTransform: 'uppercase'
 };
 
 // Hai đường vào cùng một ô chữ:
@@ -19,7 +30,7 @@ const btnStyle = {
 // 2. Rã băng file ghi âm có sẵn qua PhoWhisper trên máy A (/api/ai/transcribe). Upstream chỉ
 //    nhận tối đa 30 giây mỗi lượt, nên file dài được cắt thành từng đoạn 25s ở client rồi
 //    rã tuần tự và nối chữ lại — xem utils/audioChunk.js để biết vì sao có trần đó.
-const InterviewTranscribeSidebar = ({ onClose, onInsertSapo, onInsertNoiDung }) => {
+const InterviewTranscribe = () => {
   const [listening, setListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [interim, setInterim] = useState('');
@@ -30,6 +41,7 @@ const InterviewTranscribeSidebar = ({ onClose, onInsertSapo, onInsertNoiDung }) 
   const recognitionRef = useRef(null);
   const wantListeningRef = useRef(false); // để onend biết có nên tự khởi động lại không
   const fileInputRef = useRef(null);
+  const transcriptRef = useRef(null);
   const abortRef = useRef(null); // AbortController của lượt rã băng đang chạy
 
   useEffect(() => {
@@ -94,21 +106,30 @@ const InterviewTranscribeSidebar = ({ onClose, onInsertSapo, onInsertNoiDung }) 
     }
   }, [listening]);
 
-  // Hủy hẳn vòng rã băng khi bảng bị đóng/tháo. Để nó chạy tiếp thì một băng 20 phút bị đóng
+  // Hủy hẳn vòng rã băng khi rời trang. Để nó chạy tiếp thì một băng 20 phút bị bỏ đi
   // ở đoạn 5 vẫn nã tiếp ~43 request, chiếm 1 trong 4 slot upload của gateway suốt mấy phút
   // và làm chậm mọi người khác đang dùng AI — mà chẳng ai còn nhìn kết quả nữa.
   useEffect(() => () => abortRef.current?.abort(), []);
-
-  const handleClose = useCallback(() => {
-    abortRef.current?.abort();
-    onClose();
-  }, [onClose]);
 
   const appendTranscript = useCallback((text) => {
     const clean = String(text || '').trim();
     if (!clean) return;
     setTranscript(prev => (prev ? prev + '\n\n' : '') + clean);
   }, []);
+
+  const handleCopy = useCallback(async () => {
+    const text = transcript.trim();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      showToastSuccess('Đã copy nội dung rã băng.');
+    } catch {
+      // Clipboard API bị chặn (trang mở qua http, hoặc trình duyệt chưa cấp quyền): bôi đen
+      // sẵn ô chữ để người dùng bấm Ctrl+C là xong, thay vì báo lỗi cụt rồi bắt tự bôi tay.
+      transcriptRef.current?.select();
+      showToastError('Trình duyệt chặn copy tự động — nội dung đã bôi đen sẵn, bấm Ctrl+C.');
+    }
+  }, [transcript]);
 
   // Lấy đúng câu lỗi tiếng Việt mà backend/gateway trả về thay vì đè bằng "Transcribe
   // failed" — người dùng cần biết là máy A tắt hay là file quá dài.
@@ -162,7 +183,7 @@ const InterviewTranscribeSidebar = ({ onClose, onInsertSapo, onInsertNoiDung }) 
         }
       }
 
-      // Người dùng chủ động hủy thì im lặng, không báo lỗi — nhưng phần đã rã vẫn giữ.
+      // Người dùng chủ động rời trang thì im lặng, không báo lỗi — nhưng phần đã rã vẫn giữ.
       // Giữ phần đã rã xong trước khi báo lỗi: băng 20 phút chết ở đoạn 40/48 mà mất trắng
       // thì người dùng phải làm lại từ đầu, vô lý.
       // Lọc đoạn rỗng (khoảng lặng, đoạn dư cuối băng) trước khi nối, không thì transcript
@@ -171,7 +192,7 @@ const InterviewTranscribeSidebar = ({ onClose, onInsertSapo, onInsertNoiDung }) 
       if (failure) {
         // Mốc thật của đoạn hỏng, không phải parts.length * SEGMENT_SECONDS — đoạn cuối băng
         // ngắn hơn trần nên phép nhân đó nói quá thời lượng đã giữ được.
-        setUploadError(`Lỗi ở đoạn ${failure.at}/${segments.length} (phút ${formatDuration(failure.end)}): ${failure.message} — phần trước đó đã giữ ở ô trên.`);
+        setUploadError(`Lỗi ở đoạn ${failure.at}/${segments.length} (phút ${formatDuration(failure.end)}): ${failure.message} — phần trước đó đã giữ ở ô dưới.`);
       }
     } catch (err) {
       if (!controller.signal.aborted) setUploadError(err.message || 'Không thể kết nối backend.');
@@ -183,26 +204,22 @@ const InterviewTranscribeSidebar = ({ onClose, onInsertSapo, onInsertNoiDung }) 
     }
   }, [appendTranscript, transcribeOne]);
 
-  return (
-    <div style={{
-      position: 'fixed', top: 0, right: 0, bottom: 0, width: 380, maxWidth: '100vw', zIndex: 600,
-      display: 'flex', flexDirection: 'column', background: 'var(--surface)', borderLeft: '1px solid var(--border)',
-      boxShadow: 'var(--shadow-md)', overflowY: 'auto'
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
-        <strong style={{ fontSize: 14.5, display: 'flex', alignItems: 'center', gap: 7 }}><IconMic size={16} />Rã băng phỏng vấn</strong>
-        <button
-          onClick={handleClose}
-          aria-label={uploading ? 'Đóng và hủy rã băng' : 'Đóng'}
-          title={uploading ? 'Đóng và hủy rã băng' : 'Đóng'}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}
-        ><IconX size={17} /></button>
-      </div>
+  const hasText = Boolean(transcript.trim());
 
-      <div style={{ padding: 16, flex: 1 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>
-          Đọc trực tiếp vào chữ
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 860, margin: '0 auto' }}>
+      <div style={card}>
+        <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: 14, marginBottom: 20 }}>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 18 }}>
+            <IconMic size={18} style={{ color: 'var(--accent)' }} />
+            Rã băng phỏng vấn
+          </h3>
+          <p style={{ color: 'var(--text-muted)', margin: '6px 0 0 0', fontSize: 13 }}>
+            Đọc trực tiếp vào chữ, hoặc tải file ghi âm lên để máy rã thành văn bản.
+          </p>
         </div>
+
+        <div style={sectionLabel}>Đọc trực tiếp vào chữ</div>
 
         {!SpeechRecognitionCtor ? (
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: 'var(--warning)', background: 'var(--warning-soft)', padding: 10, borderRadius: 'var(--radius-sm)' }}>
@@ -224,48 +241,18 @@ const InterviewTranscribeSidebar = ({ onClose, onInsertSapo, onInsertNoiDung }) 
               </div>
             )}
 
-            <textarea
-              value={transcript}
-              onChange={(e) => setTranscript(e.target.value)}
-              placeholder="Nội dung đọc được sẽ hiện ở đây — có thể sửa tay trước khi chèn vào bài."
-              rows={10}
-              style={{
-                width: '100%', marginTop: 12, padding: 10, fontSize: 13.5, lineHeight: 1.6,
-                border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                background: 'var(--surface-2)', color: 'var(--text)', resize: 'vertical', boxSizing: 'border-box'
-              }}
-            />
-            {/* Xem trước phần đang nói, CHƯA chốt — tách riêng khỏi ô có thể sửa ở trên để
+            {/* Xem trước phần đang nói, CHƯA chốt — tách riêng khỏi ô có thể sửa ở dưới để
                 sửa tay giữa lúc đang nghe không bị lặp lại khi đoạn này chốt thành final. */}
             {interim && (
-              <div style={{ marginTop: 6, fontSize: 12.5, fontStyle: 'italic', color: 'var(--text-muted)' }}>
+              <div style={{ marginTop: 8, fontSize: 12.5, fontStyle: 'italic', color: 'var(--text-muted)' }}>
                 {interim}…
               </div>
             )}
-
-            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-              <button
-                onClick={() => { onInsertSapo(transcript.trim()); setTranscript(''); }}
-                disabled={!transcript.trim()}
-                style={{ ...btnStyle, opacity: transcript.trim() ? 1 : 0.5, cursor: transcript.trim() ? 'pointer' : 'not-allowed' }}
-              >
-                <IconCheck size={13} />Chèn vào Sapo
-              </button>
-              <button
-                onClick={() => { onInsertNoiDung(transcript.trim()); setTranscript(''); }}
-                disabled={!transcript.trim()}
-                style={{ ...btnStyle, opacity: transcript.trim() ? 1 : 0.5, cursor: transcript.trim() ? 'pointer' : 'not-allowed' }}
-              >
-                <IconCheck size={13} />Chèn vào Nội dung tóm tắt
-              </button>
-            </div>
           </>
         )}
 
-        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-muted)', margin: '24px 0 8px', textTransform: 'uppercase' }}>
-          Rã băng file ghi âm
-        </div>
-        <label style={{ border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)', padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12.5, cursor: uploading ? 'not-allowed' : 'pointer', display: 'block', opacity: uploading ? 0.6 : 1 }}>
+        <div style={{ ...sectionLabel, margin: '24px 0 8px' }}>Rã băng file ghi âm</div>
+        <label style={{ border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)', padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12.5, cursor: uploading ? 'not-allowed' : 'pointer', display: 'block', opacity: uploading ? 0.6 : 1 }}>
           <input
             ref={fileInputRef}
             type="file"
@@ -274,7 +261,7 @@ const InterviewTranscribeSidebar = ({ onClose, onInsertSapo, onInsertNoiDung }) 
             disabled={uploading}
             style={{ display: 'none' }}
           />
-          <IconCloudUpload size={20} style={{ marginBottom: 6, opacity: 0.6 }} />
+          <IconCloudUpload size={22} style={{ marginBottom: 6, opacity: 0.6 }} />
           <div>
             {!uploading
               ? 'Chọn file audio để rã băng (MP3, WAV, WebM...)'
@@ -285,7 +272,7 @@ const InterviewTranscribeSidebar = ({ onClose, onInsertSapo, onInsertNoiDung }) 
         </label>
 
         {/* Băng dài được cắt tự động nên người dùng không cần tự cắt, nhưng vẫn phải nói ra:
-            file 20 phút là 48 lượt gọi máy A, ai không biết sẽ tưởng treo rồi đóng giữa chừng. */}
+            file 20 phút là 48 lượt gọi máy A, ai không biết sẽ tưởng treo rồi bỏ đi giữa chừng. */}
         {uploading && progress && (
           <div style={{ marginTop: 8 }}>
             <div style={{ height: 4, background: 'var(--surface-2)', borderRadius: 999, overflow: 'hidden' }}>
@@ -298,7 +285,7 @@ const InterviewTranscribeSidebar = ({ onClose, onInsertSapo, onInsertNoiDung }) 
         )}
 
         {uploadError && (
-          <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--danger)', display: 'flex', gap: 6 }}>
+          <div role="alert" style={{ marginTop: 8, fontSize: 12.5, color: 'var(--danger)', display: 'flex', gap: 6 }}>
             <IconAlertCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />{uploadError}
           </div>
         )}
@@ -309,8 +296,44 @@ const InterviewTranscribeSidebar = ({ onClose, onInsertSapo, onInsertNoiDung }) 
           </div>
         )}
       </div>
+
+      <div style={card}>
+        <div style={sectionLabel}>Nội dung rã được</div>
+        <textarea
+          ref={transcriptRef}
+          value={transcript}
+          onChange={(e) => setTranscript(e.target.value)}
+          placeholder="Nội dung rã băng sẽ hiện ở đây — có thể sửa tay trước khi copy sang bài viết."
+          rows={16}
+          style={{
+            width: '100%', padding: 12, fontSize: 13.5, lineHeight: 1.7,
+            border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+            background: 'var(--surface-2)', color: 'var(--text)', resize: 'vertical', boxSizing: 'border-box'
+          }}
+        />
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          <button
+            onClick={handleCopy}
+            disabled={!hasText}
+            style={{
+              ...btnStyle, background: 'var(--accent)', color: '#fff', border: 'none',
+              opacity: hasText ? 1 : 0.5, cursor: hasText ? 'pointer' : 'not-allowed'
+            }}
+          >
+            <IconCopy size={14} />Copy toàn bộ
+          </button>
+          <button
+            onClick={() => setTranscript('')}
+            disabled={!hasText}
+            style={{ ...btnStyle, opacity: hasText ? 1 : 0.5, cursor: hasText ? 'pointer' : 'not-allowed' }}
+          >
+            <IconTrash size={14} />Xóa hết
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
 
-export default InterviewTranscribeSidebar;
+export default InterviewTranscribe;

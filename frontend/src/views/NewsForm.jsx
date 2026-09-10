@@ -3,13 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { scanSensitive } from '../services/aiService';
 import { showToastSuccess } from '../utils/Toast';
-import { IconPlus, IconAlertCircle, IconFolder, IconX, IconSend, IconLoader, IconRefresh, IconMic } from '../components/icons';
+import { IconPlus, IconAlertCircle, IconFolder, IconX, IconSend, IconLoader, IconRefresh } from '../components/icons';
 import AIEditorialPanel from '../components/ai/AIEditorialPanel';
 import AICategorySuggest from '../components/ai/AICategorySuggest';
 import SensitiveDataWarning from '../components/ai/SensitiveDataWarning';
 import RagChecksPanel from '../components/ai/RagChecksPanel';
 import PhotoCapture from '../components/PhotoCapture';
-import InterviewTranscribeSidebar from '../components/ai/InterviewTranscribeSidebar';
 import useOfflineDraft from '../hooks/useOfflineDraft';
 
 const NewsForm = () => {
@@ -35,16 +34,8 @@ const NewsForm = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error,      setError]      = useState('');
   const [sensitiveResult, setSensitiveResult] = useState(null); // { piiMatches, wordingWarnings }
-  const [showTranscribe, setShowTranscribe] = useState(false);
 
   const { restoredDraft, clearDraft, dismissDraft } = useOfflineDraft('newsform-draft', { ...formData, categoryId: String(categoryId) });
-
-  // Chèn NỐI vào cuối field đang có (không ghi đè) — phóng viên có thể đọc nhiều đoạn rời
-  // rạc trong lúc phỏng vấn rồi chèn dần, không mất nội dung đã gõ tay trước đó.
-  const appendField = (field, text) => {
-    if (!text) return;
-    setFormData(prev => ({ ...prev, [field]: prev[field] ? `${prev[field]}\n\n${text}` : text }));
-  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -216,16 +207,7 @@ const NewsForm = () => {
 
         {/* Nội dung */}
         <div style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <label style={labelStyle}>Nội dung tóm tắt</label>
-            <button
-              type="button"
-              onClick={() => setShowTranscribe(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text-muted)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 12, fontWeight: 600, marginBottom: 6 }}
-            >
-              <IconMic size={12} />Rã băng phỏng vấn
-            </button>
-          </div>
+          <label style={labelStyle}>Nội dung tóm tắt</label>
           <textarea
             name="noiDung" value={formData.noiDung}
             onChange={handleInputChange}
@@ -286,14 +268,6 @@ const NewsForm = () => {
           </button>
         </div>
       </form>
-
-      {showTranscribe && (
-        <InterviewTranscribeSidebar
-          onClose={() => setShowTranscribe(false)}
-          onInsertSapo={(text) => appendField('sapo', text)}
-          onInsertNoiDung={(text) => appendField('noiDung', text)}
-        />
-      )}
     </div>
   );
 };
