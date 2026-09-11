@@ -117,9 +117,12 @@ async function postChat(messages, timeoutMs, extraBody = {}) {
 }
 
 // messages: [{role: 'system'|'user'|'assistant', content: string}]
-async function chat(messages, { timeoutMs = 60000 } = {}) {
+// temperature: mặc định để trống (model tự chọn) — chỉ set khi tác vụ cần độ chính xác
+// cao hơn (proofread) hoặc đa dạng có kiểm soát (headlines), xem aiController.js.
+async function chat(messages, { timeoutMs = 60000, temperature } = {}) {
     const prepared = withVietnamese(messages);
-    const reply = await postChat(prepared, timeoutMs);
+    const extraBody = temperature === undefined ? {} : { temperature };
+    const reply = await postChat(prepared, timeoutMs, extraBody);
     if (!CJK_PATTERN.test(reply)) return reply;
 
     // System prompt một mình không đủ chắc với model 7B: đo thực tế vẫn có câu bị trả

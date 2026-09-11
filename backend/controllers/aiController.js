@@ -37,9 +37,9 @@ exports.proofread = async (req, res) => {
     if (!text || !text.trim()) return res.status(400).json({ error: 'Thiếu nội dung cần sửa.' });
     try {
         const result = await aiGateway.chat([
-            { role: 'system', content: 'Bạn là biên tập viên báo chí tiếng Việt. Sửa lỗi chính tả, ngữ pháp, câu từ lủng củng và chuẩn hóa văn phong sang chuẩn báo chí/tuyên truyền công vụ. Chỉ trả về đúng đoạn văn đã sửa, không giải thích, không thêm ghi chú.' },
+            { role: 'system', content: 'Bạn là biên tập viên báo chí tiếng Việt. Sửa lỗi chính tả, ngữ pháp, câu từ lủng củng và chuẩn hóa văn phong sang chuẩn báo chí/tuyên truyền công vụ. Giữ nguyên ý nghĩa, số liệu, tên riêng và độ dài tương đối của đoạn văn — chỉ sửa lỗi và câu chữ, KHÔNG viết lại nội dung theo ý riêng, KHÔNG thêm hoặc bớt thông tin. Chỉ trả về đúng đoạn văn đã sửa, không giải thích, không thêm ghi chú.' },
             { role: 'user', content: text }
-        ]);
+        ], { temperature: 0.2 });
         res.json({ result: result.trim() });
     } catch (err) {
         handleAiError(err, req, res, 'aiController.proofread');
@@ -51,9 +51,9 @@ exports.suggestHeadlines = async (req, res) => {
     if (!content || !content.trim()) return res.status(400).json({ error: 'Thiếu nội dung bài viết.' });
     try {
         const raw = await aiGateway.chat([
-            { role: 'system', content: 'Bạn là biên tập viên báo chí tiếng Việt. Dựa vào nội dung bài viết, đưa ra 5 gợi ý tiêu đề (đa dạng: chuẩn chính luận, chuẩn SEO, giật gân hợp lý). Trả về DUY NHẤT một mảng JSON các chuỗi, ví dụ: ["Tiêu đề 1","Tiêu đề 2"]. Không thêm chữ nào khác.' },
+            { role: 'system', content: 'Bạn là biên tập viên báo chí tiếng Việt. Dựa vào nội dung bài viết, đưa ra 5 gợi ý tiêu đề (đa dạng: chuẩn chính luận, chuẩn SEO, giật gân hợp lý). Mỗi tiêu đề PHẢI dùng chi tiết cụ thể có trong bài (tên người, địa danh, số liệu, sự kiện) — cấm tiêu đề chung chung có thể dùng cho bất kỳ bài nào khác. Không bịa thông tin không có trong bài. Trả về DUY NHẤT một mảng JSON các chuỗi, ví dụ: ["Tiêu đề 1","Tiêu đề 2"]. Không thêm chữ nào khác.' },
             { role: 'user', content }
-        ]);
+        ], { temperature: 0.6 });
         const headlines = extractJson(raw);
         if (!Array.isArray(headlines)) return res.status(502).json({ error: 'Model trả kết quả không đúng định dạng, thử lại.' });
         res.json({ headlines: headlines.filter(h => typeof h === 'string').slice(0, 5) });
