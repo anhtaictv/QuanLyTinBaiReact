@@ -15,6 +15,9 @@ router.get('/upcoming', taskController.getUpcoming);
 // Việc mình đã giao — chỉ người có quyền giao mới có danh sách này.
 router.get('/assigned', requireRoles(...ASSIGN_ROLES), taskController.getAssignedTasks);
 
+// Khối lượng việc hiện tại của từng người — để chọn người nhận không dồn việc vào 1 chỗ.
+router.get('/workload', requireRoles(...ASSIGN_ROLES), taskController.getWorkload);
+
 router.post('/', requireRoles(...ASSIGN_ROLES), createTaskRules, handleValidation, taskController.createTask);
 router.put('/:id', requireRoles(...ASSIGN_ROLES), [...taskIdRule, ...updateTaskRules], handleValidation, taskController.updateTask);
 router.delete('/:id', requireRoles(...ASSIGN_ROLES), taskIdRule, handleValidation, taskController.deleteTask);

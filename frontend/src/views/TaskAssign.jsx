@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getAssignedTasks, createTask, updateTask, deleteTask } from '../services/taskService';
+import { getAssignedTasks, createTask, updateTask, deleteTask, getWorkload } from '../services/taskService';
 import { getBasicUsers } from '../services/chatService';
 import { getNews } from '../services/newsService';
 import { showToastSuccess, showToastError } from '../utils/Toast';
 import { monthRange, toDateTimeLocalValue } from '../utils/taskDates';
 import LoadingState from '../components/LoadingState';
 import TaskItem from '../components/tasks/TaskItem';
-import { IconClipboard, IconAlertCircle, IconLoader, IconX } from '../components/icons';
+import { IconClipboard, IconAlertCircle, IconLoader, IconX, IconUsers } from '../components/icons';
 
 const card = {
   background: 'var(--surface)', border: '1px solid var(--border)', padding: 24,
@@ -28,6 +28,7 @@ const TaskAssign = () => {
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [users, setUsers] = useState([]);
+  const [workload, setWorkload] = useState([]);
   const [posts, setPosts] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -50,6 +51,9 @@ const TaskAssign = () => {
 
   useEffect(() => {
     getBasicUsers().then(res => setUsers(res.data || [])).catch(() => setUsers([]));
+    // Backend đã gộp sẵn theo API riêng cho ASSIGN_ROLES — CTV gọi route này sẽ bị 403,
+    // nên lỗi (kể cả 403) chỉ cần rơi về mảng rỗng, không chặn phần còn lại của trang.
+    getWorkload().then(res => setWorkload(res.data?.workload || [])).catch(() => setWorkload([]));
     // Chỉ lấy trang đầu của danh sách bài (API /news có phân trang) — đủ cho việc gắn bài
     // mới viết, việc cũ hơn thì ghi tên bài vào phần mô tả. Chấp cả hai kiểu trả về vì
     // /news có nơi trả {posts}, có nơi trả thẳng mảng (xem Dashboard.jsx).
@@ -58,6 +62,16 @@ const TaskAssign = () => {
       .catch(() => setPosts([]));
     fetchTasks();
   }, [fetchTasks]);
+
+  // Danh sách người nhận sắp theo việc đang mở tăng dần (workload đã sắp sẵn từ server) —
+  // ai rảnh nhất hiện lên đầu, gợi ý luôn thay vì bắt người giao việc tự nhớ ai đang bận.
+  const workloadById = new Map(workload.map(w => [w.UserID, w]));
+  const sortedUsers = [...users].sort((a, b) => {
+    const openA = workloadById.get(a.UserID)?.OpenCount ?? 0;
+    const openB = workloadById.get(b.UserID)?.OpenCount ?? 0;
+    return openA - openB;
+  });
+  const leastLoadedId = workload[0]?.UserID;
 
   const setField = (name, value) => setForm(prev => ({ ...prev, [name]: value }));
 
@@ -165,9 +179,13 @@ const TaskAssign = () => {
               <select id="task-assignee" style={inputStyle} value={form.AssigneeID} disabled={!!editingId}
                 onChange={(e) => setField('AssigneeID', e.target.value)}>
                 <option value="">-- Chọn người nhận --</option>
-                {users.map(user => (
-                  <option key={user.UserID} value={user.UserID}>{user.FullName} ({user.Role})</option>
-                ))}
+                {sortedUsers.map(user => {
+                  const w = workloadById.get(user.UserID);
+                  const label = w
+                    ? `${user.FullName} (${user.Role}) — ${w.OpenCount} đang làm, ${w.DoneCount} đã xong${w.OverdueCount ? `, ${w.OverdueCount} quá hạn` : ''}${user.UserID === leastLoadedId ? ' ⭐ rảnh nhất' : ''}`
+                    : `${user.FullName} (${user.Role})`;
+                  return <option key={user.UserID} value={user.UserID}>{label}</option>;
+                })}
               </select>
               {editingId && (
                 // Đổi người nhận giữa chừng làm hỏng lịch sử tiến độ của người cũ; muốn
@@ -215,6 +233,34 @@ const TaskAssign = () => {
           </div>
         </form>
       </div>
+
+      {workload.length > 0 && (
+        <div style={card}>
+          <h4 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, marginBottom: 14 }}>
+            <IconUsers size={16} style={{ color: 'var(--accent)' }} />
+            Khối lượng công việc hiện tại
+          </h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {workload.map(w => (
+              <div key={w.UserID} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+                padding: '8px 10px', borderRadius: 'var(--radius-sm)',
+                background: w.UserID === leastLoadedId ? 'var(--accent-soft, var(--surface-2))' : 'var(--surface-2)',
+                fontSize: 13.5
+              }}>
+                <span>
+                  {w.FullName} <span style={{ color: 'var(--text-muted)' }}>({w.Role})</span>
+                  {w.UserID === leastLoadedId && <span style={{ marginLeft: 6, color: 'var(--accent)', fontWeight: 700 }}>⭐ Đề xuất</span>}
+                </span>
+                <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  {w.OpenCount} đang làm · {w.DoneCount} đã xong
+                  {w.OverdueCount > 0 && <span style={{ color: 'var(--danger)', fontWeight: 600 }}> · {w.OverdueCount} quá hạn</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={card}>
         <h4 style={{ fontSize: 15, marginBottom: 14 }}>Việc đã giao trong tháng này ({tasks.length})</h4>

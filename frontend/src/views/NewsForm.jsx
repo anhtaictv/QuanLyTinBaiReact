@@ -5,6 +5,7 @@ import { scanSensitive } from '../services/aiService';
 import { showToastSuccess } from '../utils/Toast';
 import { IconPlus, IconAlertCircle, IconFolder, IconX, IconSend, IconLoader, IconRefresh } from '../components/icons';
 import AIEditorialPanel from '../components/ai/AIEditorialPanel';
+import StyleProfilePanel from '../components/ai/StyleProfilePanel';
 import AICategorySuggest from '../components/ai/AICategorySuggest';
 import SensitiveDataWarning from '../components/ai/SensitiveDataWarning';
 import RagChecksPanel from '../components/ai/RagChecksPanel';
@@ -215,6 +216,8 @@ const NewsForm = () => {
             placeholder="Mô tả ngắn nội dung bài viết..."
           />
         </div>
+
+        <StyleProfilePanel />
 
         <AIEditorialPanel
           content={formData.noiDung}

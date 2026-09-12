@@ -5,6 +5,10 @@ import api from './api';
 export const getMyTasks = (from, to) => api.get('/tasks/mine', { params: { from, to } });
 export const getAssignedTasks = (from, to) => api.get('/tasks/assigned', { params: { from, to } });
 
+// Số việc đang mở/đã xong của từng người, sắp theo việc mở tăng dần — dùng để gợi ý
+// người nhận việc tiếp theo lúc giao việc mới.
+export const getWorkload = () => api.get('/tasks/workload');
+
 // Vài việc gần hạn nhất, dùng cho ô tóm tắt ngoài Dashboard (backend tự giới hạn số dòng).
 export const getUpcomingTasks = () => api.get('/tasks/upcoming');
 

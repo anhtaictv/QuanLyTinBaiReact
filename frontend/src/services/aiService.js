@@ -41,3 +41,9 @@ export const transcribeAudio = (file, { signal } = {}) => {
 // messages: [{ role: 'user' | 'assistant', content: string }] — gửi lại toàn bộ hội thoại
 // mỗi lượt vì backend không lưu trạng thái phiên chat.
 export const askAssistant = (messages) => api.post('/ai/chat', { messages });
+
+// Module 6: Hồ sơ văn phong cá nhân — AI tự tóm tắt cách hành văn từ bài đã duyệt của
+// chính người dùng, dùng làm ngữ cảnh thêm cho proofread/headlines/sapo/chat ở trên.
+export const getMyStyleProfile = () => api.get('/ai/style-profile');
+export const refreshMyStyleProfile = () => api.post('/ai/style-profile/refresh');
+export const updateMyStyleProfile = (profileText) => api.put('/ai/style-profile', { profileText });

@@ -73,6 +73,12 @@ router.post('/transcribe', transcribeLimiter, acceptAudioFile, aiController.tran
 // Module 5: Trợ lý hỏi đáp tự do (hội thoại nhiều lượt, hỏi chủ đề gì cũng được)
 router.post('/chat', assistantLimiter, aiController.chat);
 
+// Module 6: Hồ sơ văn phong cá nhân — chỉ đọc/cập nhật của chính mình, không cần chặn role.
+// Refresh cũng tốn 1 lượt gọi AI Gateway như assistant nên dùng chung rate-limit.
+router.get('/style-profile', aiController.getMyStyleProfile);
+router.post('/style-profile/refresh', assistantLimiter, aiController.refreshMyStyleProfile);
+router.put('/style-profile', aiController.updateMyStyleProfile);
+
 // Module 1: Trợ lý biên tập
 router.post('/editorial/proofread', aiController.proofread);
 router.post('/editorial/headlines', aiController.suggestHeadlines);

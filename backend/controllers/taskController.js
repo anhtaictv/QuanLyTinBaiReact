@@ -116,6 +116,30 @@ exports.getUpcoming = async (req, res) => {
     }
 };
 
+// GET /api/tasks/workload — số việc đang mở/đã xong của từng người, sắp theo việc mở
+// tăng dần. Đây là bài toán đếm/so sánh, không cần model AI nào để trả lời đúng —
+// người giao việc nhìn số là biết ngay ai đang rảnh, ai đang ôm nhiều việc.
+exports.getWorkload = async (req, res) => {
+    try {
+        const pool = await poolPromise;
+        const result = await pool.request().query(`
+            SELECT
+                u.UserID, u.FullName, u.Role,
+                SUM(CASE WHEN t.Status IN ('pending', 'in_progress') THEN 1 ELSE 0 END) AS OpenCount,
+                SUM(CASE WHEN t.Status = 'done' THEN 1 ELSE 0 END) AS DoneCount,
+                SUM(CASE WHEN t.Status <> 'done' AND t.DueAt IS NOT NULL AND t.DueAt < GETUTCDATE() THEN 1 ELSE 0 END) AS OverdueCount
+            FROM dbo.Users u
+            LEFT JOIN dbo.Tasks t ON t.AssigneeID = u.UserID
+            GROUP BY u.UserID, u.FullName, u.Role
+            ORDER BY OpenCount ASC, OverdueCount ASC
+        `);
+        res.json({ workload: result.recordset || [] });
+    } catch (err) {
+        logError({ source: 'taskController.getWorkload', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
+    }
+};
+
 // Bảng Tasks cố ý không có FOREIGN KEY (xem scripts/create-tasks-table.js) nên PostID
 // sai hoặc trỏ tới bài đã xoá sẽ nằm lại im lặng trong bản ghi, và giao diện hiện link
 // "Bài #123" bấm vào không ra gì. Tự kiểm ở đây thay cho ràng buộc DB.

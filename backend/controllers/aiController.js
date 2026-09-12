@@ -2,6 +2,16 @@ const aiGateway = require('../services/aiGatewayClient');
 const { normalizeConversation } = require('../utils/aiConversation');
 const { extractJson } = require('../utils/aiJson');
 const { logError } = require('../utils/errorLogger');
+const { getStyleProfile, refreshStyleProfile, saveManualStyleProfile, MIN_SOURCE_POSTS } = require('../utils/styleProfileBuilder');
+
+// Gắn hồ sơ văn phong cá nhân (nếu có) vào cuối 1 system prompt có sẵn — dùng chung cho
+// các module đã chọn áp dụng (proofread/headlines/sapo/chat). User mới hoặc chưa đủ bài
+// đã duyệt thì getStyleProfile() trả về null, prompt gốc giữ nguyên, không đổi hành vi.
+async function withStyleProfile(basePrompt, userId) {
+    const profile = await getStyleProfile(userId).catch(() => null);
+    if (!profile?.ProfileText) return basePrompt;
+    return `${basePrompt}\n\nPhong cách viết quen thuộc của người này (tham khảo để giữ giọng văn quen thuộc, không tuân theo nếu mâu thuẫn với yêu cầu chính ở trên):\n${profile.ProfileText}`;
+}
 
 // Danh mục hiện có trên form soạn bài (NewsForm.jsx) — giữ khớp để gợi ý category
 // luôn map được vào dropdown có sẵn, không cần thêm danh mục mới.
@@ -36,8 +46,12 @@ exports.proofread = async (req, res) => {
     const { text } = req.body;
     if (!text || !text.trim()) return res.status(400).json({ error: 'Thiếu nội dung cần sửa.' });
     try {
+        const systemPrompt = await withStyleProfile(
+            'Bạn là biên tập viên báo chí tiếng Việt. Sửa lỗi chính tả, ngữ pháp, câu từ lủng củng và chuẩn hóa văn phong sang chuẩn báo chí/tuyên truyền công vụ. Giữ nguyên ý nghĩa, số liệu, tên riêng và độ dài tương đối của đoạn văn — chỉ sửa lỗi và câu chữ, KHÔNG viết lại nội dung theo ý riêng, KHÔNG thêm hoặc bớt thông tin. Chỉ trả về đúng đoạn văn đã sửa, không giải thích, không thêm ghi chú.',
+            req.user.UserID
+        );
         const result = await aiGateway.chat([
-            { role: 'system', content: 'Bạn là biên tập viên báo chí tiếng Việt. Sửa lỗi chính tả, ngữ pháp, câu từ lủng củng và chuẩn hóa văn phong sang chuẩn báo chí/tuyên truyền công vụ. Giữ nguyên ý nghĩa, số liệu, tên riêng và độ dài tương đối của đoạn văn — chỉ sửa lỗi và câu chữ, KHÔNG viết lại nội dung theo ý riêng, KHÔNG thêm hoặc bớt thông tin. Chỉ trả về đúng đoạn văn đã sửa, không giải thích, không thêm ghi chú.' },
+            { role: 'system', content: systemPrompt },
             { role: 'user', content: text }
         ], { temperature: 0.2 });
         res.json({ result: result.trim() });
@@ -50,8 +64,12 @@ exports.suggestHeadlines = async (req, res) => {
     const { content } = req.body;
     if (!content || !content.trim()) return res.status(400).json({ error: 'Thiếu nội dung bài viết.' });
     try {
+        const systemPrompt = await withStyleProfile(
+            'Bạn là biên tập viên báo chí tiếng Việt. Dựa vào nội dung bài viết, đưa ra 5 gợi ý tiêu đề (đa dạng: chuẩn chính luận, chuẩn SEO, giật gân hợp lý). Mỗi tiêu đề PHẢI dùng chi tiết cụ thể có trong bài (tên người, địa danh, số liệu, sự kiện) — cấm tiêu đề chung chung có thể dùng cho bất kỳ bài nào khác. Không bịa thông tin không có trong bài. Trả về DUY NHẤT một mảng JSON các chuỗi, ví dụ: ["Tiêu đề 1","Tiêu đề 2"]. Không thêm chữ nào khác.',
+            req.user.UserID
+        );
         const raw = await aiGateway.chat([
-            { role: 'system', content: 'Bạn là biên tập viên báo chí tiếng Việt. Dựa vào nội dung bài viết, đưa ra 5 gợi ý tiêu đề (đa dạng: chuẩn chính luận, chuẩn SEO, giật gân hợp lý). Mỗi tiêu đề PHẢI dùng chi tiết cụ thể có trong bài (tên người, địa danh, số liệu, sự kiện) — cấm tiêu đề chung chung có thể dùng cho bất kỳ bài nào khác. Không bịa thông tin không có trong bài. Trả về DUY NHẤT một mảng JSON các chuỗi, ví dụ: ["Tiêu đề 1","Tiêu đề 2"]. Không thêm chữ nào khác.' },
+            { role: 'system', content: systemPrompt },
             { role: 'user', content }
         ], { temperature: 0.6 });
         const headlines = extractJson(raw);
@@ -66,8 +84,12 @@ exports.summarize = async (req, res) => {
     const { content } = req.body;
     if (!content || !content.trim()) return res.status(400).json({ error: 'Thiếu nội dung bài viết.' });
     try {
+        const systemPrompt = await withStyleProfile(
+            'Bạn là biên tập viên báo chí tiếng Việt. Tóm tắt nội dung sau thành đoạn Sapo 2-3 câu, súc tích, đủ ý chính. Chỉ trả về đoạn Sapo, không giải thích.',
+            req.user.UserID
+        );
         const result = await aiGateway.chat([
-            { role: 'system', content: 'Bạn là biên tập viên báo chí tiếng Việt. Tóm tắt nội dung sau thành đoạn Sapo 2-3 câu, súc tích, đủ ý chính. Chỉ trả về đoạn Sapo, không giải thích.' },
+            { role: 'system', content: systemPrompt },
             { role: 'user', content }
         ]);
         res.json({ sapo: result.trim() });
@@ -165,8 +187,9 @@ exports.chat = async (req, res) => {
     if (normalized.error) return res.status(400).json({ error: normalized.error });
 
     try {
+        const systemPrompt = await withStyleProfile(ASSISTANT_SYSTEM_PROMPT, req.user.UserID);
         const reply = await aiGateway.chat(
-            [{ role: 'system', content: ASSISTANT_SYSTEM_PROMPT }, ...normalized.messages],
+            [{ role: 'system', content: systemPrompt }, ...normalized.messages],
             { timeoutMs: ASSISTANT_TIMEOUT_MS }
         );
         const trimmed = reply.trim();
@@ -264,5 +287,55 @@ exports.transcribe = async (req, res) => {
             logError({ source: 'aiController.transcribe', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         }
         res.status(status).json({ error: 'Lỗi rã băng: ' + err.message });
+    }
+};
+
+// --- Module 6: Hồ sơ văn phong cá nhân ---
+// AI tự tóm tắt cách hành văn của chính người dùng từ các bài đã duyệt của họ (xem
+// utils/styleProfileBuilder.js), dùng làm ngữ cảnh thêm cho proofread/headlines/
+// summarize/chat ở trên. Cập nhật tự động định kỳ qua Task Scheduler; 2 route dưới đây
+// chỉ để người dùng tự xem hồ sơ của mình và bấm cập nhật ngay khi không muốn chờ.
+
+exports.getMyStyleProfile = async (req, res) => {
+    try {
+        const profile = await getStyleProfile(req.user.UserID);
+        res.json({
+            profileText: profile?.ProfileText || null,
+            sourcePostCount: profile?.SourcePostCount || 0,
+            locked: !!profile?.IsLocked,
+            updatedAt: profile?.UpdatedAt || null,
+            minSourcePosts: MIN_SOURCE_POSTS
+        });
+    } catch (err) {
+        handleAiError(err, req, res, 'aiController.getMyStyleProfile');
+    }
+};
+
+// Bấm nút là chủ động nhờ AI viết lại — ghi đè cả bản đã khoá do tự sửa tay trước đó
+// (refreshStyleProfile với ignoreLock=true), và tự mở khoá lại cho các đợt auto sau này.
+exports.refreshMyStyleProfile = async (req, res) => {
+    try {
+        const result = await refreshStyleProfile(req.user.UserID, { ignoreLock: true });
+        if (!result) {
+            return res.status(409).json({ error: `Cần ít nhất ${MIN_SOURCE_POSTS} bài đã duyệt để tạo hồ sơ văn phong.` });
+        }
+        res.json({ profileText: result.profileText, sourcePostCount: result.sourcePostCount, locked: false });
+    } catch (err) {
+        handleAiError(err, req, res, 'aiController.refreshMyStyleProfile');
+    }
+};
+
+// Sửa tay hồ sơ — tự khoá (IsLocked=1) để đợt auto-refresh định kỳ không âm thầm ghi đè.
+exports.updateMyStyleProfile = async (req, res) => {
+    const { profileText } = req.body;
+    if (!profileText || !profileText.trim()) {
+        return res.status(400).json({ error: 'Thiếu nội dung hồ sơ văn phong.' });
+    }
+    try {
+        const saved = await saveManualStyleProfile(req.user.UserID, profileText);
+        res.json({ profileText: saved, locked: true });
+    } catch (err) {
+        logError({ source: 'aiController.updateMyStyleProfile', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
