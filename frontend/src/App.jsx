@@ -22,6 +22,7 @@ const AiAssistant     = lazy(() => import('./views/AiAssistant'));
 const TaskCalendar    = lazy(() => import('./views/TaskCalendar'));
 const TaskAssign      = lazy(() => import('./views/TaskAssign'));
 const InterviewTranscribe = lazy(() => import('./views/InterviewTranscribe'));
+const AiVoiceStudio   = lazy(() => import('./views/AiVoiceStudio'));
 
 // 1. Component bảo vệ Đăng nhập: Chưa đăng nhập thì không cho vào App
 const ProtectedRoute = () => {
@@ -91,6 +92,7 @@ function App() {
               <Route path="news-digest" element={<NewsDigest />} />
               <Route path="ai-assistant" element={<AiAssistant />} />
               <Route path="transcribe" element={<InterviewTranscribe />} />
+              <Route path="ai-voice" element={<AiVoiceStudio />} />
 
               {/* ✅ SỬA: dùng :postId để khớp với useParams() trong DocEditor.jsx */}
               <Route path="doc-editor/:postId" element={<DocEditor />} />

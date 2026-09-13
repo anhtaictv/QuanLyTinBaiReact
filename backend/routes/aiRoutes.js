@@ -73,6 +73,23 @@ router.post('/transcribe', transcribeLimiter, acceptAudioFile, aiController.tran
 // Module 5: Trợ lý hỏi đáp tự do (hội thoại nhiều lượt, hỏi chủ đề gì cũng được)
 router.post('/chat', assistantLimiter, aiController.chat);
 
+// Rate limit riêng cho giọng đọc AI: tạo voice clone và sinh giọng đều tốn GPU máy A như
+// transcribe, nhưng là hành vi dùng khác (không cắt nhiều đoạn như rã băng) nên trần thấp
+// hơn transcribeLimiter là đủ.
+const voiceLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => String(req.user?.UserID || req.ip),
+    message: { error: 'Bạn đang thao tác giọng đọc AI quá nhanh, vui lòng chờ rồi thử lại.' }
+});
+
+// Module 7: Giọng đọc AI (voice clone qua VoiceStudio trên máy A, xem AI_GATEWAY.md)
+router.get('/voices', aiController.listVoices);
+router.post('/voices', voiceLimiter, acceptAudioFile, aiController.createVoice);
+router.post('/speech', voiceLimiter, aiController.synthesizeSpeech);
+
 // Module 6: Hồ sơ văn phong cá nhân — chỉ đọc/cập nhật của chính mình, không cần chặn role.
 // Refresh cũng tốn 1 lượt gọi AI Gateway như assistant nên dùng chung rate-limit.
 router.get('/style-profile', aiController.getMyStyleProfile);

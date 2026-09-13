@@ -339,3 +339,135 @@ exports.updateMyStyleProfile = async (req, res) => {
         res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
     }
 };
+
+// --- Module 7: Giọng đọc AI (TTS + voice clone qua VoiceStudio trên máy A) ---
+// Cùng lý do như transcribe: gọi thẳng fetch tới gateway thay vì aiGatewayClient, vì
+// /voices và /speech là extension riêng của gateway (không phải chuẩn OpenAI chat/
+// embeddings mà aiGatewayClient bọc), và /voices (tạo) là multipart chứ không phải JSON.
+
+// Khớp trần input=4096 ký tự của VoiceStudio (SpeechRequest.input), chừa lề — chặn sớm
+// để không tốn 1 lượt qua gateway/Tailscale sang máy A rồi mới ăn 400.
+const MAX_TTS_CHARS = 4000;
+
+class VoiceGatewayDownError extends Error {
+    constructor(cause) {
+        super('Lỗi giọng đọc AI: không kết nối AI Gateway');
+        this.name = 'VoiceGatewayDownError';
+        this.cause = cause;
+    }
+}
+
+exports.listVoices = async (req, res) => {
+    const aiGatewayUrl = (process.env.AI_GATEWAY_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
+    const apiKey = process.env.AI_GATEWAY_API_KEY || '';
+    try {
+        const response = await fetch(`${aiGatewayUrl}/voices`, {
+            headers: { Authorization: `Bearer ${apiKey}` },
+            signal: AbortSignal.timeout(10000)
+        });
+        if (!response.ok) return res.status(503).json({ error: 'Không lấy được danh sách giọng đọc.', connected: false });
+        res.json(await response.json());
+    } catch {
+        res.status(503).json({ error: 'Không kết nối được AI Gateway.', connected: false });
+    }
+};
+
+exports.createVoice = async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'Không có file audio mẫu' });
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Thiếu tên giọng' });
+
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('file', new Blob([req.file.buffer], { type: req.file.mimetype }), req.file.originalname);
+
+    const aiGatewayUrl = (process.env.AI_GATEWAY_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
+    const apiKey = process.env.AI_GATEWAY_API_KEY || '';
+
+    try {
+        let response;
+        try {
+            response = await fetch(`${aiGatewayUrl}/voices`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${apiKey}` },
+                body: formData,
+                signal: AbortSignal.timeout(60000)
+            });
+        } catch (err) {
+            throw new VoiceGatewayDownError(err);
+        }
+
+        if (!response.ok) {
+            const detail = await response.json().catch(() => null);
+            if (response.status === 401 || response.status === 403) {
+                logError({
+                    source: 'aiController.createVoice(auth)',
+                    message: `AI Gateway từ chối khoá khi tạo voice (HTTP ${response.status}): ${detail?.error?.message || '(không có nội dung)'}`,
+                    userId: req.user?.UserID, method: req.method, path: req.originalUrl
+                });
+                return res.status(503).json({ error: 'Giọng đọc AI đang bị lỗi cấu hình, vui lòng báo quản trị viên.', connected: false });
+            }
+            const gatewayError = new Error(detail?.error?.message || `Gateway tạo voice lỗi ${response.status}`);
+            gatewayError.status = response.status;
+            throw gatewayError;
+        }
+        res.json(await response.json());
+    } catch (err) {
+        if (err instanceof VoiceGatewayDownError) {
+            return res.status(503).json({ error: err.message, connected: false });
+        }
+        const status = err.status >= 400 && err.status < 600 ? err.status : 500;
+        if (status === 500) {
+            logError({ source: 'aiController.createVoice', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        }
+        res.status(status).json({ error: 'Lỗi tạo giọng: ' + err.message });
+    }
+};
+
+exports.synthesizeSpeech = async (req, res) => {
+    const text = String(req.body.text || '').trim();
+    if (!text) return res.status(400).json({ error: 'Thiếu nội dung cần đọc.' });
+    if (text.length > MAX_TTS_CHARS) return res.status(400).json({ error: `Nội dung quá dài (tối đa ${MAX_TTS_CHARS} ký tự mỗi lượt).` });
+    const voice = req.body.voice || 'default';
+
+    const aiGatewayUrl = (process.env.AI_GATEWAY_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
+    const apiKey = process.env.AI_GATEWAY_API_KEY || '';
+
+    try {
+        let response;
+        try {
+            response = await fetch(`${aiGatewayUrl}/speech`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, voice }),
+                signal: AbortSignal.timeout(60000)
+            });
+        } catch (err) {
+            throw new VoiceGatewayDownError(err);
+        }
+
+        if (!response.ok) {
+            const detail = await response.json().catch(() => null);
+            if (response.status === 401 || response.status === 403) {
+                logError({
+                    source: 'aiController.synthesizeSpeech(auth)',
+                    message: `AI Gateway từ chối khoá khi tạo giọng đọc (HTTP ${response.status}): ${detail?.error?.message || '(không có nội dung)'}`,
+                    userId: req.user?.UserID, method: req.method, path: req.originalUrl
+                });
+                return res.status(503).json({ error: 'Giọng đọc AI đang bị lỗi cấu hình, vui lòng báo quản trị viên.', connected: false });
+            }
+            const status = response.status >= 400 && response.status < 600 ? response.status : 502;
+            return res.status(status).json({ error: detail?.error?.message || 'Không tạo được giọng đọc.' });
+        }
+
+        const buffer = Buffer.from(await response.arrayBuffer());
+        res.set('Content-Type', response.headers.get('content-type') || 'audio/mpeg');
+        res.send(buffer);
+    } catch (err) {
+        if (err instanceof VoiceGatewayDownError) {
+            return res.status(503).json({ error: err.message, connected: false });
+        }
+        logError({ source: 'aiController.synthesizeSpeech', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        res.status(500).json({ error: 'Lỗi tạo giọng đọc: ' + err.message });
+    }
+};

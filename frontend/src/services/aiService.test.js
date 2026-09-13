@@ -2,11 +2,14 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 // Mock lớp axios dùng chung để kiểm tra ĐÚNG những gì aiService gửi đi, không gọi mạng thật.
 vi.mock('./api', () => ({
-  default: { post: vi.fn(() => Promise.resolve({ data: { text: '' } })) }
+  default: {
+    post: vi.fn(() => Promise.resolve({ data: { text: '' } })),
+    get: vi.fn(() => Promise.resolve({ data: { voices: [] } }))
+  }
 }));
 
 import api from './api';
-import { transcribeAudio } from './aiService';
+import { transcribeAudio, listVoices, createVoice, synthesizeSpeech } from './aiService';
 
 const makeAudioFile = () => new File([new Uint8Array(8)], 'phong-van.wav', { type: 'audio/wav' });
 
@@ -69,5 +72,45 @@ describe('transcribeAudio', () => {
     // Arrange & Act & Assert
     await expect(transcribeAudio(makeAudioFile())).resolves.toBeDefined();
     expect(api.post.mock.calls[0][2].signal).toBeUndefined();
+  });
+});
+
+describe('listVoices', () => {
+  beforeEach(() => api.get.mockClear());
+
+  test('gọi đúng /ai/voices, khớp với chỗ aiRoutes được mount', async () => {
+    await listVoices();
+    expect(api.get).toHaveBeenCalledWith('/ai/voices');
+  });
+});
+
+describe('createVoice', () => {
+  beforeEach(() => api.post.mockClear());
+
+  test('gửi name + file dạng multipart, bỏ Content-Type như transcribeAudio', async () => {
+    const file = makeAudioFile();
+
+    await createVoice('Giọng MC A', file);
+
+    expect(api.post.mock.calls[0][0]).toBe('/ai/voices');
+    const body = api.post.mock.calls[0][1];
+    expect(body).toBeInstanceOf(FormData);
+    expect(body.get('name')).toBe('Giọng MC A');
+    expect(body.get('file')).toBeInstanceOf(File);
+    expect(api.post.mock.calls[0][2].headers['Content-Type']).toBeUndefined();
+  });
+});
+
+describe('synthesizeSpeech', () => {
+  beforeEach(() => api.post.mockClear());
+
+  // responseType 'blob' là điều kiện bắt buộc: thiếu nó axios cố parse audio nhị phân
+  // thành JSON và ném lỗi, xem PostDetail.jsx:handleDownloadFile cho ca tương tự.
+  test('gọi /ai/speech với responseType blob để nhận về audio nhị phân', async () => {
+    await synthesizeSpeech('Xin chào', 'abc123');
+
+    expect(api.post.mock.calls[0][0]).toBe('/ai/speech');
+    expect(api.post.mock.calls[0][1]).toEqual({ text: 'Xin chào', voice: 'abc123' });
+    expect(api.post.mock.calls[0][2].responseType).toBe('blob');
   });
 });

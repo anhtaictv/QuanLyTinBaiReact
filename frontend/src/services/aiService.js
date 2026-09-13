@@ -47,3 +47,20 @@ export const askAssistant = (messages) => api.post('/ai/chat', { messages });
 export const getMyStyleProfile = () => api.get('/ai/style-profile');
 export const refreshMyStyleProfile = () => api.post('/ai/style-profile/refresh');
 export const updateMyStyleProfile = (profileText) => api.put('/ai/style-profile', { profileText });
+
+// Module 7: Giọng đọc AI (TTS + voice clone qua VoiceStudio trên máy A).
+export const listVoices = () => api.get('/ai/voices');
+
+// Tạo voice clone từ 1 file audio mẫu — cùng lý do Content-Type: undefined như
+// transcribeAudio (multipart cần trình duyệt tự điền boundary).
+export const createVoice = (name, file) => {
+  const formData = new FormData();
+  formData.append('name', name);
+  formData.append('file', file, file.name);
+  return api.post('/ai/voices', formData, { headers: { 'Content-Type': undefined } });
+};
+
+// responseType: 'blob' để nhận về audio nhị phân thay vì cố parse JSON — xem
+// PostDetail.jsx:handleDownloadFile để biết cách dựng lại thành link tải/phát.
+export const synthesizeSpeech = (text, voice) =>
+  api.post('/ai/speech', { text, voice }, { responseType: 'blob' });
