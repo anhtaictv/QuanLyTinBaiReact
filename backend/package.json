@@ -14,7 +14,7 @@
     "cors": "^2.8.5",
     "docxtemplater": "^3.68.7",
     "dotenv": "^16.4.5",
-    "express": "^4.22.2",
+    "express": "^5.2.1",
     "express-rate-limit": "^7.4.1",
     "express-validator": "^7.3.2",
     "googleapis": "^172.0.0",
