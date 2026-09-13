@@ -64,3 +64,39 @@ export const createVoice = (name, file) => {
 // PostDetail.jsx:handleDownloadFile để biết cách dựng lại thành link tải/phát.
 export const synthesizeSpeech = (text, voice) =>
   api.post('/ai/speech', { text, voice }, { responseType: 'blob' });
+
+// Máy A chỉ có MỘT GPU worker cho giọng đọc: ai bấm đọc trong lúc nó đang đọc bài khác sẽ
+// ăn 503 "máy đọc đang bận" ngay tức khắc. Đó là trạng thái BÌNH THƯỜNG của 3 app dùng
+// chung một máy, không phải hỏng hóc — bắt người dùng tự bấm lại giữa bài đang đọc dở là
+// hỏng cả lượt đọc, nên tự chờ rồi thử lại đúng đoạn đó.
+export const SPEECH_RETRY_ATTEMPTS = 3;
+const SPEECH_RETRY_FALLBACK_MS = 20000;
+const SPEECH_RETRY_MAX_WAIT_MS = 90000;
+
+// Gateway gửi kèm Retry-After (giây) lấy từ chính câu trả lời của máy A ("safe to retry in
+// about 107s") — chờ đúng khoảng đó thay vì đoán mò.
+const retryAfterMs = (err) => {
+  const seconds = Number(err?.response?.headers?.['retry-after']);
+  if (!Number.isFinite(seconds) || seconds <= 0) return SPEECH_RETRY_FALLBACK_MS;
+  return Math.min(seconds * 1000, SPEECH_RETRY_MAX_WAIT_MS);
+};
+
+// 503 = máy bận/hạ tầng, thử lại có ích. 4xx (nội dung sai) và 504 (đoạn này quá dài) thì
+// thử lại bao nhiêu lần cũng vậy, trả lỗi ngay cho người dùng biết đường sửa.
+const isBusyError = (err) => err?.response?.status === 503;
+
+const defaultWait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+export const synthesizeSpeechChunk = async (text, voice, { attempts = SPEECH_RETRY_ATTEMPTS, wait = defaultWait } = {}) => {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await synthesizeSpeech(text, voice);
+    } catch (err) {
+      lastError = err;
+      if (!isBusyError(err) || attempt === attempts) throw err;
+      await wait(retryAfterMs(err));
+    }
+  }
+  throw lastError;
+};

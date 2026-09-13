@@ -349,6 +349,36 @@ exports.updateMyStyleProfile = async (req, res) => {
 // để không tốn 1 lượt qua gateway/Tailscale sang máy A rồi mới ăn 400.
 const MAX_TTS_CHARS = 4000;
 
+// /voices phải hỏi sang máy A qua Tailscale rồi mới liệt kê được profile giọng đã nhân
+// bản — đo thật 13/09/2026 mất 9,25 giây, tức sát nút trần 10 giây cũ. Chỉ cần máy A bận
+// hơn bình thường một chút là danh sách giọng rỗng kèm "Không kết nối được AI Gateway"
+// trong khi gateway vẫn sống.
+const LIST_VOICES_TIMEOUT_MS = 30000;
+
+// Nhân bản giọng phải nạp file mẫu sang máy A rồi trích đặc trưng — chậm hơn hẳn một lượt đọc.
+const CREATE_VOICE_TIMEOUT_MS = 120000;
+
+// Tốc độ đọc đo thật trên chính gateway này (13/09/2026): ~5 giây khởi động + ~31ms/ký tự
+// (37 ký tự → 6,5 giây; 1.080 ký tự → 38,9 giây). Trần 60 giây cố định trước đây vì thế
+// bắn ngay từ khoảng 1.700 ký tự trở lên — tức gần như mọi bài thật — và AbortSignal.timeout
+// ném DOMException y hệt lúc mất kết nối, nên người dùng nhận câu "không kết nối AI Gateway"
+// dù máy A vẫn đang đọc bình thường. Tính trần theo độ dài với hệ số ~3 lần tốc độ đo được.
+// Đo thật 13/09/2026 trên máy A (GTX 1080): 124 ký tự -> 11,4 giây, 157 ký tự -> 39,1 giây,
+// 300 ký tự -> 228 giây. Thời gian KHÔNG tuyến tính theo độ dài, nên trần phải rộng tay:
+// một đoạn ~150 ký tự (kích thước frontend cắt ra, xem ttsChunk.js) được 105 giây, tức gần
+// gấp ba lần mức đo được lúc máy rảnh.
+const SPEECH_BASE_TIMEOUT_MS = 45000;
+const SPEECH_MS_PER_CHAR = 400;
+
+// Trần cứng 110 giây: IIS/ARR đứng trước Node cắt mọi request ở 120 giây (mặc định
+// 00:02:00, xem system.webServer/proxy), và nó cắt bằng trang lỗi 502 của IIS chứ không
+// phải JSON của mình. Hết giờ TRƯỚC ARR thì người dùng còn đọc được câu tiếng Việt giải
+// thích; để ARR ra tay trước thì chỉ còn "502 Bad Gateway" trống trơn.
+const SPEECH_MAX_TIMEOUT_MS = 110000;
+
+const speechTimeoutFor = (length) =>
+    Math.min(SPEECH_BASE_TIMEOUT_MS + length * SPEECH_MS_PER_CHAR, SPEECH_MAX_TIMEOUT_MS);
+
 class VoiceGatewayDownError extends Error {
     constructor(cause) {
         super('Lỗi giọng đọc AI: không kết nối AI Gateway');
@@ -357,13 +387,28 @@ class VoiceGatewayDownError extends Error {
     }
 }
 
+// Hết giờ KHÁC hẳn mất kết nối: gateway vẫn sống, chỉ là nội dung quá dài cho một lượt.
+// Gộp chung hai thứ này vào một câu "không kết nối AI Gateway" là đẩy người dùng đi kiểm
+// tra mạng trong khi việc cần làm là cắt ngắn nội dung.
+class VoiceTimeoutError extends Error {
+    constructor(cause, message) {
+        super(message);
+        this.name = 'VoiceTimeoutError';
+        this.cause = cause;
+    }
+}
+
+// fetch của Node ném DOMException name='TimeoutError' khi AbortSignal.timeout bắn, còn
+// TypeError('fetch failed') khi thật sự không nối được (gateway tắt, sai cổng, Tailscale rớt).
+const isTimeoutError = (err) => err?.name === 'TimeoutError' || err?.name === 'AbortError';
+
 exports.listVoices = async (req, res) => {
     const aiGatewayUrl = (process.env.AI_GATEWAY_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
     const apiKey = process.env.AI_GATEWAY_API_KEY || '';
     try {
         const response = await fetch(`${aiGatewayUrl}/voices`, {
             headers: { Authorization: `Bearer ${apiKey}` },
-            signal: AbortSignal.timeout(10000)
+            signal: AbortSignal.timeout(LIST_VOICES_TIMEOUT_MS)
         });
         if (!response.ok) return res.status(503).json({ error: 'Không lấy được danh sách giọng đọc.', connected: false });
         res.json(await response.json());
@@ -391,10 +436,12 @@ exports.createVoice = async (req, res) => {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${apiKey}` },
                 body: formData,
-                signal: AbortSignal.timeout(60000)
+                signal: AbortSignal.timeout(CREATE_VOICE_TIMEOUT_MS)
             });
         } catch (err) {
-            throw new VoiceGatewayDownError(err);
+            throw isTimeoutError(err)
+                ? new VoiceTimeoutError(err, 'Tạo giọng chạy quá lâu — thử file mẫu ngắn hơn (10-30 giây) rồi làm lại.')
+                : new VoiceGatewayDownError(err);
         }
 
         if (!response.ok) {
@@ -415,6 +462,10 @@ exports.createVoice = async (req, res) => {
     } catch (err) {
         if (err instanceof VoiceGatewayDownError) {
             return res.status(503).json({ error: err.message, connected: false });
+        }
+        // 504: file mẫu quá dài/máy A quá bận, không phải lỗi server đáng gọi người sửa.
+        if (err instanceof VoiceTimeoutError) {
+            return res.status(504).json({ error: err.message });
         }
         const status = err.status >= 400 && err.status < 600 ? err.status : 500;
         if (status === 500) {
@@ -440,10 +491,12 @@ exports.synthesizeSpeech = async (req, res) => {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text, voice }),
-                signal: AbortSignal.timeout(60000)
+                signal: AbortSignal.timeout(speechTimeoutFor(text.length))
             });
         } catch (err) {
-            throw new VoiceGatewayDownError(err);
+            throw isTimeoutError(err)
+                ? new VoiceTimeoutError(err, 'Giọng đọc AI chạy quá lâu cho một lượt — thử rút ngắn nội dung rồi đọc từng phần.')
+                : new VoiceGatewayDownError(err);
         }
 
         if (!response.ok) {
@@ -466,6 +519,10 @@ exports.synthesizeSpeech = async (req, res) => {
     } catch (err) {
         if (err instanceof VoiceGatewayDownError) {
             return res.status(503).json({ error: err.message, connected: false });
+        }
+        // 504: nội dung quá dài chứ không phải server hỏng — không đổ vào ErrorLogs/Telegram.
+        if (err instanceof VoiceTimeoutError) {
+            return res.status(504).json({ error: err.message });
         }
         logError({ source: 'aiController.synthesizeSpeech', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
         res.status(500).json({ error: 'Lỗi tạo giọng đọc: ' + err.message });

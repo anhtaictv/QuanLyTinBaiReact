@@ -9,7 +9,7 @@ vi.mock('./api', () => ({
 }));
 
 import api from './api';
-import { transcribeAudio, listVoices, createVoice, synthesizeSpeech } from './aiService';
+import { transcribeAudio, listVoices, createVoice, synthesizeSpeech, synthesizeSpeechChunk } from './aiService';
 
 const makeAudioFile = () => new File([new Uint8Array(8)], 'phong-van.wav', { type: 'audio/wav' });
 
@@ -112,5 +112,61 @@ describe('synthesizeSpeech', () => {
     expect(api.post.mock.calls[0][0]).toBe('/ai/speech');
     expect(api.post.mock.calls[0][1]).toEqual({ text: 'Xin chào', voice: 'abc123' });
     expect(api.post.mock.calls[0][2].responseType).toBe('blob');
+  });
+});
+
+describe('synthesizeSpeechChunk', () => {
+  beforeEach(() => {
+    api.post.mockClear();
+  });
+
+  // Máy A chỉ có 1 GPU worker: 503 "đang bận" là chuyện thường khi 2 người cùng bấm đọc,
+  // để nó làm hỏng cả lượt đọc thì bài dài không bao giờ đọc xong.
+  test('thử lại đoạn bị từ chối vì máy đọc đang bận', async () => {
+    // Arrange
+    const busy = Object.assign(new Error('busy'), { response: { status: 503, headers: {} } });
+    api.post.mockRejectedValueOnce(busy).mockResolvedValueOnce({ data: 'audio' });
+    const waits = [];
+
+    // Act
+    const result = await synthesizeSpeechChunk('xin chào', 'v1', { wait: (ms) => { waits.push(ms); return Promise.resolve(); } });
+
+    // Assert
+    expect(result.data).toBe('audio');
+    expect(api.post).toHaveBeenCalledTimes(2);
+    expect(waits).toEqual([20000]);
+  });
+
+  test('chờ đúng số giây máy đọc báo trong Retry-After', async () => {
+    // Arrange
+    const busy = Object.assign(new Error('busy'), { response: { status: 503, headers: { 'retry-after': '45' } } });
+    api.post.mockRejectedValueOnce(busy).mockResolvedValueOnce({ data: 'audio' });
+    const waits = [];
+
+    // Act
+    await synthesizeSpeechChunk('xin chào', 'v1', { wait: (ms) => { waits.push(ms); return Promise.resolve(); } });
+
+    // Assert
+    expect(waits).toEqual([45000]);
+  });
+
+  test('không thử lại khi nội dung quá dài cho một lượt (504)', async () => {
+    // Arrange
+    const tooLong = Object.assign(new Error('timeout'), { response: { status: 504, headers: {} } });
+    api.post.mockRejectedValue(tooLong);
+
+    // Act & Assert
+    await expect(synthesizeSpeechChunk('dài', 'v1', { wait: () => Promise.resolve() })).rejects.toThrow('timeout');
+    expect(api.post).toHaveBeenCalledTimes(1);
+  });
+
+  test('trả lỗi sau khi đã thử đủ số lần mà máy vẫn bận', async () => {
+    // Arrange
+    const busy = Object.assign(new Error('busy'), { response: { status: 503, headers: {} } });
+    api.post.mockRejectedValue(busy);
+
+    // Act & Assert
+    await expect(synthesizeSpeechChunk('x', 'v1', { attempts: 3, wait: () => Promise.resolve() })).rejects.toThrow('busy');
+    expect(api.post).toHaveBeenCalledTimes(3);
   });
 });

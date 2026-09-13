@@ -1,9 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { IconMic, IconAlertCircle, IconCloudUpload, IconDownload, IconUser } from '../components/icons';
-import { listVoices, createVoice, synthesizeSpeech } from '../services/aiService';
+import { listVoices, createVoice, synthesizeSpeechChunk } from '../services/aiService';
 import { showToastSuccess, showToastError } from '../utils/Toast';
+import { splitTextForSpeech } from '../utils/ttsChunk';
 
-const MAX_TTS_CHARS = 4000; // khớp trần backend/gateway, xem aiController.js:synthesizeSpeech
+// Trần của MỘT lượt gọi gateway là 4.000 ký tự (aiController.js:MAX_TTS_CHARS), nhưng từ
+// khi cắt đoạn (utils/ttsChunk.js) mỗi lượt chỉ còn ~150 ký tự nên cả bài không còn bị trần
+// đó chặn. 3.000 ký tự ≈ 20 đoạn ≈ 8-12 phút chờ theo tốc độ thật của máy A — dài hơn nữa
+// thì người dùng ngồi nhìn thanh tiến độ lâu hơn cả đọc bài.
+const MAX_TTS_CHARS = 3000;
 
 const card = {
   background: 'var(--surface)', border: '1px solid var(--border)', padding: 24,
@@ -43,6 +48,7 @@ const AiVoiceStudio = () => {
 
   const [text, setText] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [genProgress, setGenProgress] = useState(null); // { done, total } khi đang đọc nhiều đoạn
   const [genError, setGenError] = useState('');
   const [audioUrl, setAudioUrl] = useState(null);
   const audioUrlRef = useRef(null);
@@ -93,14 +99,27 @@ const AiVoiceStudio = () => {
     }
   }, [newVoiceName, newVoiceFile, loadVoices]);
 
+  // Đọc lần lượt từng đoạn rồi nối audio lại, thay vì đẩy cả bài trong một lượt gọi:
+  // xem utils/ttsChunk.js để biết vì sao một lượt dài luôn chết ở timeout backend/ARR.
   const handleGenerate = useCallback(async () => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
+    const chunks = splitTextForSpeech(text);
+    if (chunks.length === 0) return;
+
     setGenerating(true);
     setGenError('');
+    setGenProgress({ done: 0, total: chunks.length });
     try {
-      const { data } = await synthesizeSpeech(trimmed, selectedVoice);
-      const url = URL.createObjectURL(data);
+      const parts = [];
+      for (const [index, chunk] of chunks.entries()) {
+        // synthesizeSpeechChunk tự chờ và thử lại khi máy A báo bận (503) — xem aiService.js.
+        const { data } = await synthesizeSpeechChunk(chunk, selectedVoice);
+        parts.push(data);
+        setGenProgress({ done: index + 1, total: chunks.length });
+      }
+
+      // Nối các file MP3 liền nhau: trình duyệt đọc MPEG theo từng frame nên phát được
+      // chuỗi frame ghép, và người dùng vẫn tải về đúng một file như trước.
+      const url = URL.createObjectURL(new Blob(parts, { type: 'audio/mpeg' }));
       if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
       audioUrlRef.current = url;
       setAudioUrl(url);
@@ -116,6 +135,7 @@ const AiVoiceStudio = () => {
       setGenError(message);
     } finally {
       setGenerating(false);
+      setGenProgress(null);
     }
   }, [text, selectedVoice]);
 
@@ -208,7 +228,11 @@ const AiVoiceStudio = () => {
           }}
         >
           <IconMic size={15} />
-          {generating ? 'Đang tạo giọng đọc...' : 'Tạo giọng đọc'}
+          {generating
+            ? (genProgress && genProgress.total > 1
+              ? `Đang đọc đoạn ${Math.min(genProgress.done + 1, genProgress.total)}/${genProgress.total}...`
+              : 'Đang tạo giọng đọc...')
+            : 'Tạo giọng đọc'}
         </button>
 
         {genError && (
