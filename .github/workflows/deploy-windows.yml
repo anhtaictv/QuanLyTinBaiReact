@@ -64,25 +64,52 @@ jobs:
           # (bcrypt) dang dung, unlink se loi EPERM va npm ci se xoa dat node_modules.
           pm2 stop qltin-backend
 
-          npm ci --omit=dev
+          # Tu day backend DANG TAT, nen moi duong thoat deu phai di qua finally de bat
+          # lai. Truoc day mot migration hong la site nam 502.3 cho toi khi co nguoi phat
+          # hien bang mat (da xay ra that: run 34735638382 ngay 13/09/2026).
+          $deployError = $null
+          try {
+            npm ci --omit=dev
+            # Native command khong nem exception du $ErrorActionPreference = "Stop" - phai
+            # tu doc $LASTEXITCODE, khong thi npm ci hong van chay tiep xuong migration.
+            if ($LASTEXITCODE -ne 0) { throw "npm ci that bai (exit code $LASTEXITCODE)" }
 
-          # Migration DB idempotent (IF NOT EXISTS...) - an toan chay lai moi lan deploy,
-          # khong can chay tay tren VPS nua. Bound timeout rieng cho buoc nay (khac
-          # poolPromise trong config/db.js retry vo han theo thiet ke cho server chinh)
-          # de 1 lan DB tam thoi chua san sang khong treo ca pipeline deploy.
-          foreach ($script in @('scripts/create-news-digest-table.js', 'scripts/add-device-to-push-subscriptions.js', 'scripts/create-post-approval-audit.js', 'scripts/add-photo-path-to-posts.js', 'scripts/drop-userid-unique-push-subscriptions.js', 'scripts/create-style-profile-table.js')) {
-            Write-Output "Running migration: $script"
-            $proc = Start-Process -FilePath "node" -ArgumentList $script -NoNewWindow -PassThru
-            $proc.Handle | Out-Null   # bat buoc .NET cache handle ngay, khong ExitCode doc ra rong sau khi exit
-            if (-not $proc.WaitForExit(60000)) {
-              try { $proc.Kill() } catch {}
-              throw "Migration '$script' timed out sau 60s (DB co the chua san sang)"
+            # Migration DB idempotent (IF NOT EXISTS...) - an toan chay lai moi lan deploy,
+            # khong can chay tay tren VPS nua. Bound timeout rieng cho buoc nay (khac
+            # poolPromise trong config/db.js retry vo han theo thiet ke cho server chinh)
+            # de 1 lan DB tam thoi chua san sang khong treo ca pipeline deploy.
+            #
+            # 180s chu khong phai 60s: ban than script migration da cho MOI cau DDL toi
+            # 120s (DDL_TIMEOUT_MS trong scripts/create-*-table.js) vi DDL tren VPS nay do
+            # thuc te ~10s va cham hon nhieu khi SQL bi ep RAM. Tran ngoai nho hon tran
+            # trong nghia la workflow giet tien trinh dang chay dung - dung cai da lam
+            # deploy 13/09/2026 that bai ngay o script dau tien.
+            $migrationTimeoutMs = 180000
+            foreach ($script in @('scripts/create-news-digest-table.js', 'scripts/add-device-to-push-subscriptions.js', 'scripts/create-post-approval-audit.js', 'scripts/add-photo-path-to-posts.js', 'scripts/drop-userid-unique-push-subscriptions.js', 'scripts/create-style-profile-table.js')) {
+              Write-Output "Running migration: $script"
+              $proc = Start-Process -FilePath "node" -ArgumentList $script -NoNewWindow -PassThru
+              $proc.Handle | Out-Null   # bat buoc .NET cache handle ngay, khong ExitCode doc ra rong sau khi exit
+              if (-not $proc.WaitForExit($migrationTimeoutMs)) {
+                try { $proc.Kill() } catch {}
+                throw "Migration '$script' timed out sau $($migrationTimeoutMs / 1000)s (DB co the chua san sang)"
+              }
+              if ($proc.ExitCode -ne 0) { throw "Migration '$script' that bai (exit code $($proc.ExitCode))" }
             }
-            if ($proc.ExitCode -ne 0) { throw "Migration '$script' that bai (exit code $($proc.ExitCode))" }
           }
-
-          pm2 restart qltin-backend --update-env
-          pm2 save
+          catch {
+            # Giu loi lai roi nem lai SAU finally: nem ngay tai day thi backend khong duoc
+            # bat lai, con de finally "nuot" loi thi pm2 restart tra exit code 0 va deploy
+            # hong bi bao thanh cong.
+            $deployError = $_
+          }
+          finally {
+            # Chay ca khi npm ci/migration hong: backend chay lai code cu con hon la site
+            # chet. Code moi da duoc copy vao roi nen neu chi migration hong thi lan restart
+            # nay da la ban moi - van phai fail step de nguoi deploy biet ma xu ly migration.
+            pm2 restart qltin-backend --update-env
+            pm2 save
+          }
+          if ($deployError) { throw $deployError }
 
       - name: Build frontend
         shell: powershell
