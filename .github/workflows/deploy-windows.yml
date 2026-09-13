@@ -85,15 +85,33 @@ jobs:
             # trong nghia la workflow giet tien trinh dang chay dung - dung cai da lam
             # deploy 13/09/2026 that bai ngay o script dau tien.
             $migrationTimeoutMs = 180000
+            # Thu lai 3 lan, cach nhau 30s. Deploy 13/09/2026 hong o
+            # add-photo-path-to-posts.js voi "operation timed out for an unknown reason"
+            # sau dung 30s (= connectionTimeout trong config/db.js), roi chay tay ngay sau
+            # do lai OK trong vai giay - cau IF NOT EXISTS do thuc chat la no-op (cot da
+            # ton tai). Nghia la khong phai migration sai ma la SQL bi ep RAM dung luc
+            # npm ci chiem may (xem comment requestTimeout trong config/db.js). Migration
+            # deu idempotent nen chay lai la an toan.
+            $migrationRetries = 3
+            $migrationRetryDelaySec = 30
             foreach ($script in @('scripts/create-news-digest-table.js', 'scripts/add-device-to-push-subscriptions.js', 'scripts/create-post-approval-audit.js', 'scripts/add-photo-path-to-posts.js', 'scripts/drop-userid-unique-push-subscriptions.js', 'scripts/create-style-profile-table.js')) {
-              Write-Output "Running migration: $script"
-              $proc = Start-Process -FilePath "node" -ArgumentList $script -NoNewWindow -PassThru
-              $proc.Handle | Out-Null   # bat buoc .NET cache handle ngay, khong ExitCode doc ra rong sau khi exit
-              if (-not $proc.WaitForExit($migrationTimeoutMs)) {
-                try { $proc.Kill() } catch {}
-                throw "Migration '$script' timed out sau $($migrationTimeoutMs / 1000)s (DB co the chua san sang)"
+              for ($attempt = 1; $attempt -le $migrationRetries; $attempt++) {
+                Write-Output "Running migration: $script (lan $attempt/$migrationRetries)"
+                $proc = Start-Process -FilePath "node" -ArgumentList $script -NoNewWindow -PassThru
+                $proc.Handle | Out-Null   # bat buoc .NET cache handle ngay, khong ExitCode doc ra rong sau khi exit
+                if (-not $proc.WaitForExit($migrationTimeoutMs)) {
+                  try { $proc.Kill() } catch {}
+                  $failure = "Migration '$script' timed out sau $($migrationTimeoutMs / 1000)s (DB co the chua san sang)"
+                } elseif ($proc.ExitCode -ne 0) {
+                  $failure = "Migration '$script' that bai (exit code $($proc.ExitCode))"
+                } else {
+                  $failure = $null
+                }
+                if (-not $failure) { break }
+                if ($attempt -eq $migrationRetries) { throw $failure }
+                Write-Output "$failure - thu lai sau $($migrationRetryDelaySec)s"
+                Start-Sleep -Seconds $migrationRetryDelaySec
               }
-              if ($proc.ExitCode -ne 0) { throw "Migration '$script' that bai (exit code $($proc.ExitCode))" }
             }
           }
           catch {
