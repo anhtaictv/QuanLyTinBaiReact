@@ -184,8 +184,8 @@ const Dashboard = () => {
                         <IconRobot size={16} style={{ color: 'var(--text-muted)' }} />
                         <span>Voice Studio</span>
                         {aiHealth?.voiceStudio
-                            ? <StatusPill label="Online" variant="success" />
-                            : <StatusPill label="Offline" variant="error" />}
+                            ? <StatusPill label="Online" tone="success" />
+                            : <StatusPill label="Offline" tone="danger" />}
                     </div>
                 </div>
                 {aiOnline === false && (
@@ -203,20 +203,6 @@ const Dashboard = () => {
     );
 };
 
-<<<<<<< HEAD
-const StatusPill = ({ label, variant = 'success' }) => {
-    const bgColor = variant === 'error' ? 'var(--error-soft)' : 'var(--success-soft)';
-    const textColor = variant === 'error' ? 'var(--error)' : 'var(--success)';
-    const dotColor = variant === 'error' ? 'var(--error)' : 'var(--success)';
-
-    return (
-        <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            marginLeft: 'auto', background: bgColor, color: textColor,
-            fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 999
-        }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor }} />
-=======
 const PILL_TONES = {
     success: { fg: 'var(--success)', bg: 'var(--success-soft)' },
     danger: { fg: 'var(--danger)', bg: 'var(--danger-soft)' },
@@ -232,7 +218,6 @@ const StatusPill = ({ label, tone = 'success' }) => {
             fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 999
         }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: fg }} />
->>>>>>> 8ddbcff60fc5f8c7ef768abce3bcdf009734175e
             {label}
         </span>
     );
