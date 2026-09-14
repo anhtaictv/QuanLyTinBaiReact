@@ -18,6 +18,7 @@ const {
 const driveRoutes = require('./routes/driveRoutes'); // ✅ chỉ require ở đây
 const pushRoutes = require('./routes/pushRoutes');
 const errorLogRoutes = require('./routes/errorLogRoutes');
+const taskRoutes = require('./routes/taskRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const newsDigestRoutes = require('./routes/newsDigestRoutes');
 const aiRoutes = require('./routes/aiRoutes');
@@ -129,6 +130,7 @@ app.use('/api/file', verifyToken, fileRoutes);
 app.use('/api/drive', verifyToken, driveRoutes);
 app.use('/api/push', verifyToken, pushRoutes);
 app.use('/api/errors', verifyToken, isAdmin, errorLogRoutes);
+app.use('/api/tasks', verifyToken, taskRoutes);
 app.use('/api/chat', verifyToken, chatRoutes);
 app.use('/api/news-digest', verifyToken, newsDigestRoutes);
 app.use('/api/ai', verifyToken, aiRoutes);

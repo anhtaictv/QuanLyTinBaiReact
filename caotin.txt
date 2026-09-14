@@ -1,0 +1,66 @@
+﻿🛠️ Kiến trúc hệ thống tổng quan (3 Bước)
+Một AI không thể tự khơi khơi đi "quét" cả Internet nếu không có các công cụ (Tools) hỗ trợ thu thập dữ liệu thô. Do đó, module của anh sẽ hoạt động theo quy trình:
+
+[Nguồn tin: FB, Telegram, Web] ➔ [Bộ thu thập (Scraper/API)] ➔ [Cơ sở dữ liệu tạm] ➔ [AI (Claude/GPT) phân tích & tóm tắt] ➔ [Đầu ra: Bản tin địa phương]
+1. Giải pháp thu thập dữ liệu theo từng nguồn
+Đây là phần phức tạp nhất vì mỗi nền tảng có rào cản kỹ thuật khác nhau:
+
+A. Kênh Telegram (Dễ nhất)
+Telegram rất mở và thân thiện với lập trình viên.
+
+Giải pháp: Sử dụng thư viện Telethon hoặc Pyrogram (Python) để đăng nhập dưới dạng tài khoản người dùng cá nhân (Telegram Client API - không dùng Bot thường vì Bot thường không đọc được kênh của người khác).
+
+Cách hoạt động: Lắng nghe và tự động cào tin từ các group/channel lớn ở địa phương anh (ví dụ: các hội nhóm giao thông, tin tức tỉnh/thành phố).
+
+B. Các trang tin điện tử, báo chí VN (Dễ trung bình)
+Giải pháp:
+
+Sử dụng RSS Feed nếu các trang báo đó có hỗ trợ (ví dụ: VnExpress, Tuổi Trẻ, Dân Trí đều có RSS chia theo địa phương). Đây là cách chính thống, nhanh và sạch nhất.
+
+Nếu trang web không có RSS, dùng các công cụ cào web chuyên dụng như Scrapy, BeautifulSoup hoặc các dịch vụ như Apify để lấy bài viết mới mỗi giờ.
+
+C. Facebook (Khó nhất)
+Meta bảo mật cực kỳ gắt gao và thường xuyên chặn (block) các tài khoản tự động đi quét dữ liệu.
+
+Giải pháp chính thống: Rất khó vì Meta yêu cầu xét duyệt doanh nghiệp cực kỳ ngặt nghèo để cấp quyền truy cập công khai.
+
+Giải pháp thực tế:
+
+Sử dụng bên thứ ba (Paid API): Thuê các API của bên thứ ba (như Apify Facebook Groups/Pages Scraper, Data365, v.v.). Họ lo phần proxy và tài khoản clone để quét tin, anh chỉ việc nhận dữ liệu sạch về.
+
+Tự xây dựng (Lưu ý rủi ro): Dùng Selenium/Playwright để giả lập trình duyệt, đăng nhập nick clone và quét các Group/Fanpage địa phương. (Cách này rất dễ bị quét checkpoint và khóa nick).
+
+2. Thiết kế Skill / Module cho AI (Claude)
+Sau khi dữ liệu thô đã được gom về database (ví dụ: PostgreSQL hoặc MongoDB), anh sẽ tích hợp nó với Claude thông qua cơ chế Function Calling (Tools) hoặc truyền trực tiếp dữ liệu vào Prompt.
+
+Bản mẫu Prompt cho Claude thực hiện tóm tắt:
+Hệ thống: Bạn là một Biên tập viên Tin tức Địa phương thông thái và nhạy bén tại [Tên địa phương, ví dụ: Đắk Lắk].
+
+Nhiệm vụ: Hãy phân tích danh sách dữ liệu tin tức thô được thu thập từ mạng xã hội và báo chí dưới đây. Lọc bỏ các tin rác, quảng cáo, tin giả, tin trùng lặp. Chỉ giữ lại và tóm tắt những tin tức quan trọng có tác động trực tiếp tới đời sống, xã hội, giao thông, thời tiết hoặc an ninh tại địa phương.
+
+Dữ liệu thô thu thập được:
+[Chèn dữ liệu JSON/Text đã cào được tại đây, bao gồm: Tiêu đề, Nội dung, Nguồn, Thời gian]
+
+Yêu cầu đầu ra:
+Hãy trình bày bản tin ngắn gọn theo cấu trúc sau:
+
+Tổng quan trong ngày: (1 câu tóm tắt trạng thái chung của địa phương).
+
+Tin nổi bật (An ninh/Xã hội): (Các sự kiện lớn kèm nguồn gốc).
+
+Giao thông & Thời tiết: (Các lưu ý di chuyển, thiên tai, kẹt xe...).
+
+Góc cảnh giác / Đời sống: (Các thông tin lừa đảo, mất điện, mất nước...).
+
+3. Gợi ý bộ công nghệ (Tech Stack) để anh lập trình
+Nếu anh muốn tự code hoặc thuê lập trình viên làm, đây là bộ khung chuẩn chỉnh nhất:
+
+Backend chính: Python (Vì Python hỗ trợ xử lý dữ liệu, thư viện cào web cực mạnh và tích hợp thư viện AI rất dễ).
+
+Thư viện cào tin: Telethon (Telegram), BeautifulSoup/Scrapy (Web báo chí), Playwright hoặc gọi API của Apify (Facebook).
+
+AI SDK: @anthropic-ai/sdk (để gọi Claude API - nên dùng model Claude 3.5 Sonnet vì nó tóm tắt và hiểu tiếng Việt cực kỳ tự nhiên, logic đỉnh nhất hiện tại).
+
+Task Scheduler: Dùng Celery hoặc Cron Job để cứ mỗi 3 tiếng hoặc cuối ngày (ví dụ 18h) hệ thống tự động kích hoạt tiến trình: Cào dữ liệu -> Gửi cho Claude -> Nhận bản tóm tắt -> Lưu vào phần mềm quản lý tin bài của anh.
+
+Anh có muốn em đi sâu chi tiết hơn vào phần code mẫu cho nguồn nào trước không (ví dụ code cào Telegram bằng Python hoặc code gọi API Claude để tóm tắt)?

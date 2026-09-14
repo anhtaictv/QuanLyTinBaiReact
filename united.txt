@@ -1,0 +1,5 @@
+
+- API: http://127.0.0.1:9000
+- WebUI: http://127.0.0.1:9001
+- User: minioadmin_svc
+- Password: Kx9Tm2Qp7VrZw4Ln8Bs

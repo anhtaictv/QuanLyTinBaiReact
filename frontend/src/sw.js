@@ -1,4 +1,12 @@
 import { precacheAndRoute } from 'workbox-precaching';
+import { clientsClaim } from 'workbox-core';
+
+// Thiếu 2 dòng dưới là lý do PWA cứ phục vụ mãi bản JS/CSS cũ dù server đã deploy bản
+// mới: mặc định 1 SW mới cài xong sẽ nằm "waiting" tới khi user đóng HẾT tab đang mở mới
+// activate. skipWaiting() bỏ qua bước chờ đó; clientsClaim() cho SW mới nắm luôn các tab
+// đang mở thay vì đợi lần load kế tiếp. Xem thêm registerServiceWorker() trong App.jsx.
+self.skipWaiting();
+clientsClaim();
 
 // Precache SPA shell (JS/CSS/HTML đã hash theo build của Vite) để app cài đặt được và tải
 // lại được khi offline. KHÔNG cache /api/* ở đây — dữ liệu duyệt bài/quyền hạn không nên

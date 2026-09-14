@@ -77,15 +77,26 @@ async function assertOk(res, label) {
     throw new Error(`AI Gateway ${label} trả lỗi ${res.status}: ${body}`);
 }
 
-async function isAvailable() {
+async function fetchGatewayHealth() {
     try {
         const res = await fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) });
-        if (!res.ok) return false;
-        const data = await res.json().catch(() => null);
-        return !!(data && (data.ollama || data.fallbackProvider !== 'none'));
+        if (!res.ok) return null;
+        return await res.json().catch(() => null);
     } catch {
-        return false;
+        return null;
     }
+}
+
+async function isAvailable() {
+    const data = await fetchGatewayHealth();
+    return !!(data && (data.ollama || data.fallbackProvider !== 'none'));
+}
+
+// Riêng vì PhoWhisper là server khác trên máy A, có thể tắt độc lập với Ollama —
+// isAvailable() (chat/RAG) true không có nghĩa transcribe cũng dùng được.
+async function isWhisperAvailable() {
+    const data = await fetchGatewayHealth();
+    return !!(data && data.whisper);
 }
 
 async function postChat(messages, timeoutMs, extraBody = {}) {
@@ -106,9 +117,12 @@ async function postChat(messages, timeoutMs, extraBody = {}) {
 }
 
 // messages: [{role: 'system'|'user'|'assistant', content: string}]
-async function chat(messages, { timeoutMs = 60000 } = {}) {
+// temperature: mặc định để trống (model tự chọn) — chỉ set khi tác vụ cần độ chính xác
+// cao hơn (proofread) hoặc đa dạng có kiểm soát (headlines), xem aiController.js.
+async function chat(messages, { timeoutMs = 60000, temperature } = {}) {
     const prepared = withVietnamese(messages);
-    const reply = await postChat(prepared, timeoutMs);
+    const extraBody = temperature === undefined ? {} : { temperature };
+    const reply = await postChat(prepared, timeoutMs, extraBody);
     if (!CJK_PATTERN.test(reply)) return reply;
 
     // System prompt một mình không đủ chắc với model 7B: đo thực tế vẫn có câu bị trả
@@ -145,7 +159,7 @@ async function embed(text, { timeoutMs = 30000 } = {}) {
 }
 
 module.exports = {
-    chat, embed, isAvailable, withVietnamese,
+    chat, embed, isAvailable, isWhisperAvailable, withVietnamese,
     AiGatewayUnavailableError, AiGatewayAuthError,
     VIETNAMESE_RULE, BASE_URL
 };

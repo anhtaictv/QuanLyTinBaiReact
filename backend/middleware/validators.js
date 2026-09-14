@@ -1,4 +1,4 @@
-const { body, validationResult } = require('express-validator');
+const { body, param, validationResult } = require('express-validator');
 
 // Middleware dùng chung sau các validation chain — trả lỗi 400 gọn, đúng format
 // { success:false, message } đã dùng thống nhất trong toàn bộ authController.
@@ -50,7 +50,34 @@ const createNewsRules = [
     body('tieuDe').trim().isLength({ min: 1, max: 500 }).withMessage('Vui lòng nhập tiêu đề bài viết!'),
 ];
 
+// Module Lịch công việc. Trạng thái KHÔNG validate ở đây mà trong controller, để danh
+// sách mã hợp lệ chỉ tồn tại một chỗ duy nhất là utils/taskStatus.js.
+const taskFieldRules = [
+    body('Title').trim().isLength({ min: 1, max: 300 }).withMessage('Vui lòng nhập tên công việc (tối đa 300 ký tự)!'),
+    body('Description').optional({ values: 'falsy' }).trim().isLength({ max: 4000 }).withMessage('Mô tả công việc quá dài!'),
+    body('DueAt').optional({ values: 'falsy' }).isISO8601().withMessage('Hạn hoàn thành không hợp lệ!'),
+    body('PostID').optional({ values: 'falsy' }).isInt({ min: 1 }).withMessage('Bài viết liên quan không hợp lệ!'),
+];
+
+const createTaskRules = [
+    ...taskFieldRules,
+    body('AssigneeID').isInt({ min: 1 }).withMessage('Vui lòng chọn người nhận việc!'),
+];
+
+const updateTaskRules = [...taskFieldRules];
+
+const updateStatusRules = [
+    body('Status').trim().notEmpty().withMessage('Thiếu trạng thái công việc!'),
+];
+
+// :id không phải số thì chặn ngay bằng 400 có câu chữ rõ ràng, thay vì để SQL Server tự
+// ép kiểu rồi ném lỗi và biến thành 500 vô nghĩa trong ErrorLogs.
+const taskIdRule = [
+    param('id').isInt({ min: 1 }).withMessage('Mã công việc không hợp lệ!'),
+];
+
 module.exports = {
     handleValidation, registerRules, loginRules, changePasswordRules, createNewsRules,
     updateEmailRules, forgotPasswordRules, resetPasswordRules,
+    createTaskRules, updateTaskRules, updateStatusRules, taskIdRule,
 };

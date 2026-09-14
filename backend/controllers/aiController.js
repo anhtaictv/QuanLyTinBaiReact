@@ -2,6 +2,16 @@ const aiGateway = require('../services/aiGatewayClient');
 const { normalizeConversation } = require('../utils/aiConversation');
 const { extractJson } = require('../utils/aiJson');
 const { logError } = require('../utils/errorLogger');
+const { getStyleProfile, refreshStyleProfile, saveManualStyleProfile, MIN_SOURCE_POSTS } = require('../utils/styleProfileBuilder');
+
+// Gắn hồ sơ văn phong cá nhân (nếu có) vào cuối 1 system prompt có sẵn — dùng chung cho
+// các module đã chọn áp dụng (proofread/headlines/sapo/chat). User mới hoặc chưa đủ bài
+// đã duyệt thì getStyleProfile() trả về null, prompt gốc giữ nguyên, không đổi hành vi.
+async function withStyleProfile(basePrompt, userId) {
+    const profile = await getStyleProfile(userId).catch(() => null);
+    if (!profile?.ProfileText) return basePrompt;
+    return `${basePrompt}\n\nPhong cách viết quen thuộc của người này (tham khảo để giữ giọng văn quen thuộc, không tuân theo nếu mâu thuẫn với yêu cầu chính ở trên):\n${profile.ProfileText}`;
+}
 
 // Danh mục hiện có trên form soạn bài (NewsForm.jsx) — giữ khớp để gợi ý category
 // luôn map được vào dropdown có sẵn, không cần thêm danh mục mới.
@@ -25,18 +35,25 @@ function handleAiError(err, req, res, source) {
 }
 
 exports.health = async (req, res) => {
-    const connected = await aiGateway.isAvailable();
-    res.json({ connected });
+    const [connected, whisperConnected] = await Promise.all([
+        aiGateway.isAvailable(),
+        aiGateway.isWhisperAvailable()
+    ]);
+    res.json({ connected, whisperConnected });
 };
 
 exports.proofread = async (req, res) => {
     const { text } = req.body;
     if (!text || !text.trim()) return res.status(400).json({ error: 'Thiếu nội dung cần sửa.' });
     try {
+        const systemPrompt = await withStyleProfile(
+            'Bạn là biên tập viên báo chí tiếng Việt. Sửa lỗi chính tả, ngữ pháp, câu từ lủng củng và chuẩn hóa văn phong sang chuẩn báo chí/tuyên truyền công vụ. Giữ nguyên ý nghĩa, số liệu, tên riêng và độ dài tương đối của đoạn văn — chỉ sửa lỗi và câu chữ, KHÔNG viết lại nội dung theo ý riêng, KHÔNG thêm hoặc bớt thông tin. Chỉ trả về đúng đoạn văn đã sửa, không giải thích, không thêm ghi chú.',
+            req.user.UserID
+        );
         const result = await aiGateway.chat([
-            { role: 'system', content: 'Bạn là biên tập viên báo chí tiếng Việt. Sửa lỗi chính tả, ngữ pháp, câu từ lủng củng và chuẩn hóa văn phong sang chuẩn báo chí/tuyên truyền công vụ. Chỉ trả về đúng đoạn văn đã sửa, không giải thích, không thêm ghi chú.' },
+            { role: 'system', content: systemPrompt },
             { role: 'user', content: text }
-        ]);
+        ], { temperature: 0.2 });
         res.json({ result: result.trim() });
     } catch (err) {
         handleAiError(err, req, res, 'aiController.proofread');
@@ -47,10 +64,14 @@ exports.suggestHeadlines = async (req, res) => {
     const { content } = req.body;
     if (!content || !content.trim()) return res.status(400).json({ error: 'Thiếu nội dung bài viết.' });
     try {
+        const systemPrompt = await withStyleProfile(
+            'Bạn là biên tập viên báo chí tiếng Việt. Dựa vào nội dung bài viết, đưa ra 5 gợi ý tiêu đề (đa dạng: chuẩn chính luận, chuẩn SEO, giật gân hợp lý). Mỗi tiêu đề PHẢI dùng chi tiết cụ thể có trong bài (tên người, địa danh, số liệu, sự kiện) — cấm tiêu đề chung chung có thể dùng cho bất kỳ bài nào khác. Không bịa thông tin không có trong bài. Trả về DUY NHẤT một mảng JSON các chuỗi, ví dụ: ["Tiêu đề 1","Tiêu đề 2"]. Không thêm chữ nào khác.',
+            req.user.UserID
+        );
         const raw = await aiGateway.chat([
-            { role: 'system', content: 'Bạn là biên tập viên báo chí tiếng Việt. Dựa vào nội dung bài viết, đưa ra 5 gợi ý tiêu đề (đa dạng: chuẩn chính luận, chuẩn SEO, giật gân hợp lý). Trả về DUY NHẤT một mảng JSON các chuỗi, ví dụ: ["Tiêu đề 1","Tiêu đề 2"]. Không thêm chữ nào khác.' },
+            { role: 'system', content: systemPrompt },
             { role: 'user', content }
-        ]);
+        ], { temperature: 0.6 });
         const headlines = extractJson(raw);
         if (!Array.isArray(headlines)) return res.status(502).json({ error: 'Model trả kết quả không đúng định dạng, thử lại.' });
         res.json({ headlines: headlines.filter(h => typeof h === 'string').slice(0, 5) });
@@ -63,8 +84,12 @@ exports.summarize = async (req, res) => {
     const { content } = req.body;
     if (!content || !content.trim()) return res.status(400).json({ error: 'Thiếu nội dung bài viết.' });
     try {
+        const systemPrompt = await withStyleProfile(
+            'Bạn là biên tập viên báo chí tiếng Việt. Tóm tắt nội dung sau thành đoạn Sapo 2-3 câu, súc tích, đủ ý chính. Chỉ trả về đoạn Sapo, không giải thích.',
+            req.user.UserID
+        );
         const result = await aiGateway.chat([
-            { role: 'system', content: 'Bạn là biên tập viên báo chí tiếng Việt. Tóm tắt nội dung sau thành đoạn Sapo 2-3 câu, súc tích, đủ ý chính. Chỉ trả về đoạn Sapo, không giải thích.' },
+            { role: 'system', content: systemPrompt },
             { role: 'user', content }
         ]);
         res.json({ sapo: result.trim() });
@@ -162,8 +187,9 @@ exports.chat = async (req, res) => {
     if (normalized.error) return res.status(400).json({ error: normalized.error });
 
     try {
+        const systemPrompt = await withStyleProfile(ASSISTANT_SYSTEM_PROMPT, req.user.UserID);
         const reply = await aiGateway.chat(
-            [{ role: 'system', content: ASSISTANT_SYSTEM_PROMPT }, ...normalized.messages],
+            [{ role: 'system', content: systemPrompt }, ...normalized.messages],
             { timeoutMs: ASSISTANT_TIMEOUT_MS }
         );
         const trimmed = reply.trim();
@@ -173,6 +199,22 @@ exports.chat = async (req, res) => {
         handleAiError(err, req, res, 'aiController.chat');
     }
 };
+
+// Rã băng chạy lâu hơn hẳn một lượt chat: file 25 giây vẫn phải đi qua Tailscale sang máy A
+// rồi mới tới lượt GPU chạy PhoWhisper.
+const TRANSCRIBE_TIMEOUT_MS = 120000;
+
+// transcribe gọi thẳng fetch chứ KHÔNG đi qua aiGatewayClient, nên không có
+// AiGatewayUnavailableError nào để bắt — lớp lỗi đó chỉ được ném bên trong client kia.
+// Không tự nhận diện ở đây thì gateway chết sẽ rơi xuống nhánh 500 kèm nguyên văn
+// "fetch failed", đúng thứ vô nghĩa với người dùng cuối.
+class TranscribeGatewayDownError extends Error {
+    constructor(cause) {
+        super('Lỗi rã băng: không kết nối AI Gateway');
+        this.name = 'TranscribeGatewayDownError';
+        this.cause = cause;
+    }
+}
 
 exports.transcribe = async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'Không có file audio' });
@@ -184,21 +226,305 @@ exports.transcribe = async (req, res) => {
     const apiKey = process.env.AI_GATEWAY_API_KEY || '';
 
     try {
-        const response = await fetch(`${aiGatewayUrl}/transcribe`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${apiKey}` },
-            body: formData,
-            signal: AbortSignal.timeout(120000)
-        });
+        let response;
+        try {
+            response = await fetch(`${aiGatewayUrl}/transcribe`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${apiKey}` },
+                body: formData,
+                signal: AbortSignal.timeout(TRANSCRIBE_TIMEOUT_MS)
+            });
+        } catch (err) {
+            // fetch của Node ném TypeError('fetch failed') khi không nối được (gateway tắt,
+            // sai cổng, Tailscale rớt) và DOMException khi AbortSignal.timeout bắn. Cả hai
+            // đều là "gateway không trả lời" chứ không phải lỗi lập trình.
+            throw new TranscribeGatewayDownError(err);
+        }
 
-        if (!response.ok) throw new Error(`Gateway transcribe lỗi ${response.status}`);
+        // Gateway trả {error:{message}} với câu tiếng Việt nói rõ nguyên nhân (máy A tắt,
+        // file quá dài, định dạng không nhận...). Đè bằng "Gateway transcribe lỗi 400" thì
+        // client mất hết thông tin đó — quan trọng khi rã băng dài, vì sidebar báo lỗi theo
+        // từng đoạn và người dùng cần biết nên thử lại hay đổi file.
+        if (!response.ok) {
+            const detail = await response.json().catch(() => null);
+
+            // 401/403 = khoá AI_GATEWAY_API_KEY sai/lệch với gateway. Câu lỗi của gateway
+            // ("Thiếu hoặc sai Authorization: Bearer <GATEWAY_API_KEY>") được viết cho người
+            // vận hành gateway, KHÔNG phải cho phóng viên: chuyển nguyên văn ra là khoe với
+            // mọi user rằng có một gateway nội bộ dùng Bearer token và tên biến môi trường của
+            // nó. Xử lý giống AiGatewayAuthError ở handleAiError: ghi log để còn sửa .env,
+            // nhưng chỉ trả câu chung chung cho người dùng.
+            if (response.status === 401 || response.status === 403) {
+                logError({
+                    source: 'aiController.transcribe(auth)',
+                    message: `AI Gateway từ chối khoá khi rã băng (HTTP ${response.status}): ${detail?.error?.message || '(không có nội dung)'}`,
+                    userId: req.user?.UserID, method: req.method, path: req.originalUrl
+                });
+                return res.status(503).json({ error: 'Rã băng đang bị lỗi cấu hình, vui lòng báo quản trị viên.', connected: false });
+            }
+
+            const gatewayError = new Error(detail?.error?.message || `Gateway transcribe lỗi ${response.status}`);
+            gatewayError.status = response.status;
+            throw gatewayError;
+        }
         const data = await response.json();
         res.json({ text: data.text || '' });
     } catch (err) {
-        console.error('[aiController] transcribe error:', err);
-        if (err instanceof aiGateway.AiGatewayUnavailableError || err.message.includes('timeout')) {
-            return res.status(503).json({ error: 'Lỗi rã băng: không kết nối AI Gateway' });
+        // Gateway/máy A chưa chạy là trạng thái BÌNH THƯỜNG ở đây (xem handleAiError) —
+        // không đổ vào ErrorLogs/Telegram cho nhiễu báo lỗi.
+        if (err instanceof TranscribeGatewayDownError) {
+            return res.status(503).json({ error: err.message, connected: false });
         }
-        res.status(500).json({ error: 'Lỗi rã băng: ' + err.message });
+
+        // Giữ nguyên mã lỗi của gateway: 400 (file sai định dạng / quá dài) không phải lỗi
+        // server, còn 503 (máy A tắt) cần khác 500 để bên gọi biết thử lại sau là được.
+        const status = err.status >= 400 && err.status < 600 ? err.status : 500;
+
+        // Chỉ 500 mới là lỗi bất ngờ đáng gọi người sửa; 4xx là file của người dùng, 503 là
+        // hạ tầng tắt. Dùng logError như mọi handler khác trong file thay vì console.error,
+        // không thì lỗi rã băng không bao giờ tới được đường cảnh báo của ops.
+        if (status === 500) {
+            logError({ source: 'aiController.transcribe', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        }
+        res.status(status).json({ error: 'Lỗi rã băng: ' + err.message });
+    }
+};
+
+// --- Module 6: Hồ sơ văn phong cá nhân ---
+// AI tự tóm tắt cách hành văn của chính người dùng từ các bài đã duyệt của họ (xem
+// utils/styleProfileBuilder.js), dùng làm ngữ cảnh thêm cho proofread/headlines/
+// summarize/chat ở trên. Cập nhật tự động định kỳ qua Task Scheduler; 2 route dưới đây
+// chỉ để người dùng tự xem hồ sơ của mình và bấm cập nhật ngay khi không muốn chờ.
+
+exports.getMyStyleProfile = async (req, res) => {
+    try {
+        const profile = await getStyleProfile(req.user.UserID);
+        res.json({
+            profileText: profile?.ProfileText || null,
+            sourcePostCount: profile?.SourcePostCount || 0,
+            locked: !!profile?.IsLocked,
+            updatedAt: profile?.UpdatedAt || null,
+            minSourcePosts: MIN_SOURCE_POSTS
+        });
+    } catch (err) {
+        handleAiError(err, req, res, 'aiController.getMyStyleProfile');
+    }
+};
+
+// Bấm nút là chủ động nhờ AI viết lại — ghi đè cả bản đã khoá do tự sửa tay trước đó
+// (refreshStyleProfile với ignoreLock=true), và tự mở khoá lại cho các đợt auto sau này.
+exports.refreshMyStyleProfile = async (req, res) => {
+    try {
+        const result = await refreshStyleProfile(req.user.UserID, { ignoreLock: true });
+        if (!result) {
+            return res.status(409).json({ error: `Cần ít nhất ${MIN_SOURCE_POSTS} bài đã duyệt để tạo hồ sơ văn phong.` });
+        }
+        res.json({ profileText: result.profileText, sourcePostCount: result.sourcePostCount, locked: false });
+    } catch (err) {
+        handleAiError(err, req, res, 'aiController.refreshMyStyleProfile');
+    }
+};
+
+// Sửa tay hồ sơ — tự khoá (IsLocked=1) để đợt auto-refresh định kỳ không âm thầm ghi đè.
+exports.updateMyStyleProfile = async (req, res) => {
+    const { profileText } = req.body;
+    if (!profileText || !profileText.trim()) {
+        return res.status(400).json({ error: 'Thiếu nội dung hồ sơ văn phong.' });
+    }
+    try {
+        const saved = await saveManualStyleProfile(req.user.UserID, profileText);
+        res.json({ profileText: saved, locked: true });
+    } catch (err) {
+        logError({ source: 'aiController.updateMyStyleProfile', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        res.status(500).json({ error: 'Đã có lỗi xảy ra, vui lòng thử lại sau!' });
+    }
+};
+
+// --- Module 7: Giọng đọc AI (TTS + voice clone qua VoiceStudio trên máy A) ---
+// Cùng lý do như transcribe: gọi thẳng fetch tới gateway thay vì aiGatewayClient, vì
+// /voices và /speech là extension riêng của gateway (không phải chuẩn OpenAI chat/
+// embeddings mà aiGatewayClient bọc), và /voices (tạo) là multipart chứ không phải JSON.
+
+// Khớp trần input=4096 ký tự của VoiceStudio (SpeechRequest.input), chừa lề — chặn sớm
+// để không tốn 1 lượt qua gateway/Tailscale sang máy A rồi mới ăn 400.
+const MAX_TTS_CHARS = 4000;
+
+// /voices phải hỏi sang máy A qua Tailscale rồi mới liệt kê được profile giọng đã nhân
+// bản — đo thật 13/09/2026 mất 9,25 giây, tức sát nút trần 10 giây cũ. Chỉ cần máy A bận
+// hơn bình thường một chút là danh sách giọng rỗng kèm "Không kết nối được AI Gateway"
+// trong khi gateway vẫn sống.
+const LIST_VOICES_TIMEOUT_MS = 30000;
+
+// Nhân bản giọng phải nạp file mẫu sang máy A rồi trích đặc trưng — chậm hơn hẳn một lượt đọc.
+const CREATE_VOICE_TIMEOUT_MS = 120000;
+
+// Tốc độ đọc đo thật trên chính gateway này (13/09/2026): ~5 giây khởi động + ~31ms/ký tự
+// (37 ký tự → 6,5 giây; 1.080 ký tự → 38,9 giây). Trần 60 giây cố định trước đây vì thế
+// bắn ngay từ khoảng 1.700 ký tự trở lên — tức gần như mọi bài thật — và AbortSignal.timeout
+// ném DOMException y hệt lúc mất kết nối, nên người dùng nhận câu "không kết nối AI Gateway"
+// dù máy A vẫn đang đọc bình thường. Tính trần theo độ dài với hệ số ~3 lần tốc độ đo được.
+// Đo thật 13/09/2026 trên máy A (GTX 1080): 124 ký tự -> 11,4 giây, 157 ký tự -> 39,1 giây,
+// 300 ký tự -> 228 giây. Thời gian KHÔNG tuyến tính theo độ dài, nên trần phải rộng tay:
+// một đoạn ~150 ký tự (kích thước frontend cắt ra, xem ttsChunk.js) được 105 giây, tức gần
+// gấp ba lần mức đo được lúc máy rảnh.
+const SPEECH_BASE_TIMEOUT_MS = 45000;
+const SPEECH_MS_PER_CHAR = 400;
+
+// Trần cứng 110 giây: IIS/ARR đứng trước Node cắt mọi request ở 120 giây (mặc định
+// 00:02:00, xem system.webServer/proxy), và nó cắt bằng trang lỗi 502 của IIS chứ không
+// phải JSON của mình. Hết giờ TRƯỚC ARR thì người dùng còn đọc được câu tiếng Việt giải
+// thích; để ARR ra tay trước thì chỉ còn "502 Bad Gateway" trống trơn.
+const SPEECH_MAX_TIMEOUT_MS = 110000;
+
+const speechTimeoutFor = (length) =>
+    Math.min(SPEECH_BASE_TIMEOUT_MS + length * SPEECH_MS_PER_CHAR, SPEECH_MAX_TIMEOUT_MS);
+
+class VoiceGatewayDownError extends Error {
+    constructor(cause) {
+        super('Lỗi giọng đọc AI: không kết nối AI Gateway');
+        this.name = 'VoiceGatewayDownError';
+        this.cause = cause;
+    }
+}
+
+// Hết giờ KHÁC hẳn mất kết nối: gateway vẫn sống, chỉ là nội dung quá dài cho một lượt.
+// Gộp chung hai thứ này vào một câu "không kết nối AI Gateway" là đẩy người dùng đi kiểm
+// tra mạng trong khi việc cần làm là cắt ngắn nội dung.
+class VoiceTimeoutError extends Error {
+    constructor(cause, message) {
+        super(message);
+        this.name = 'VoiceTimeoutError';
+        this.cause = cause;
+    }
+}
+
+// fetch của Node ném DOMException name='TimeoutError' khi AbortSignal.timeout bắn, còn
+// TypeError('fetch failed') khi thật sự không nối được (gateway tắt, sai cổng, Tailscale rớt).
+const isTimeoutError = (err) => err?.name === 'TimeoutError' || err?.name === 'AbortError';
+
+exports.listVoices = async (req, res) => {
+    const aiGatewayUrl = (process.env.AI_GATEWAY_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
+    const apiKey = process.env.AI_GATEWAY_API_KEY || '';
+    try {
+        const response = await fetch(`${aiGatewayUrl}/voices`, {
+            headers: { Authorization: `Bearer ${apiKey}` },
+            signal: AbortSignal.timeout(LIST_VOICES_TIMEOUT_MS)
+        });
+        if (!response.ok) return res.status(503).json({ error: 'Không lấy được danh sách giọng đọc.', connected: false });
+        res.json(await response.json());
+    } catch {
+        res.status(503).json({ error: 'Không kết nối được AI Gateway.', connected: false });
+    }
+};
+
+exports.createVoice = async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'Không có file audio mẫu' });
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Thiếu tên giọng' });
+
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('file', new Blob([req.file.buffer], { type: req.file.mimetype }), req.file.originalname);
+
+    const aiGatewayUrl = (process.env.AI_GATEWAY_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
+    const apiKey = process.env.AI_GATEWAY_API_KEY || '';
+
+    try {
+        let response;
+        try {
+            response = await fetch(`${aiGatewayUrl}/voices`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${apiKey}` },
+                body: formData,
+                signal: AbortSignal.timeout(CREATE_VOICE_TIMEOUT_MS)
+            });
+        } catch (err) {
+            throw isTimeoutError(err)
+                ? new VoiceTimeoutError(err, 'Tạo giọng chạy quá lâu — thử file mẫu ngắn hơn (10-30 giây) rồi làm lại.')
+                : new VoiceGatewayDownError(err);
+        }
+
+        if (!response.ok) {
+            const detail = await response.json().catch(() => null);
+            if (response.status === 401 || response.status === 403) {
+                logError({
+                    source: 'aiController.createVoice(auth)',
+                    message: `AI Gateway từ chối khoá khi tạo voice (HTTP ${response.status}): ${detail?.error?.message || '(không có nội dung)'}`,
+                    userId: req.user?.UserID, method: req.method, path: req.originalUrl
+                });
+                return res.status(503).json({ error: 'Giọng đọc AI đang bị lỗi cấu hình, vui lòng báo quản trị viên.', connected: false });
+            }
+            const gatewayError = new Error(detail?.error?.message || `Gateway tạo voice lỗi ${response.status}`);
+            gatewayError.status = response.status;
+            throw gatewayError;
+        }
+        res.json(await response.json());
+    } catch (err) {
+        if (err instanceof VoiceGatewayDownError) {
+            return res.status(503).json({ error: err.message, connected: false });
+        }
+        // 504: file mẫu quá dài/máy A quá bận, không phải lỗi server đáng gọi người sửa.
+        if (err instanceof VoiceTimeoutError) {
+            return res.status(504).json({ error: err.message });
+        }
+        const status = err.status >= 400 && err.status < 600 ? err.status : 500;
+        if (status === 500) {
+            logError({ source: 'aiController.createVoice', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        }
+        res.status(status).json({ error: 'Lỗi tạo giọng: ' + err.message });
+    }
+};
+
+exports.synthesizeSpeech = async (req, res) => {
+    const text = String(req.body.text || '').trim();
+    if (!text) return res.status(400).json({ error: 'Thiếu nội dung cần đọc.' });
+    if (text.length > MAX_TTS_CHARS) return res.status(400).json({ error: `Nội dung quá dài (tối đa ${MAX_TTS_CHARS} ký tự mỗi lượt).` });
+    const voice = req.body.voice || 'default';
+
+    const aiGatewayUrl = (process.env.AI_GATEWAY_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
+    const apiKey = process.env.AI_GATEWAY_API_KEY || '';
+
+    try {
+        let response;
+        try {
+            response = await fetch(`${aiGatewayUrl}/speech`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, voice }),
+                signal: AbortSignal.timeout(speechTimeoutFor(text.length))
+            });
+        } catch (err) {
+            throw isTimeoutError(err)
+                ? new VoiceTimeoutError(err, 'Giọng đọc AI chạy quá lâu cho một lượt — thử rút ngắn nội dung rồi đọc từng phần.')
+                : new VoiceGatewayDownError(err);
+        }
+
+        if (!response.ok) {
+            const detail = await response.json().catch(() => null);
+            if (response.status === 401 || response.status === 403) {
+                logError({
+                    source: 'aiController.synthesizeSpeech(auth)',
+                    message: `AI Gateway từ chối khoá khi tạo giọng đọc (HTTP ${response.status}): ${detail?.error?.message || '(không có nội dung)'}`,
+                    userId: req.user?.UserID, method: req.method, path: req.originalUrl
+                });
+                return res.status(503).json({ error: 'Giọng đọc AI đang bị lỗi cấu hình, vui lòng báo quản trị viên.', connected: false });
+            }
+            const status = response.status >= 400 && response.status < 600 ? response.status : 502;
+            return res.status(status).json({ error: detail?.error?.message || 'Không tạo được giọng đọc.' });
+        }
+
+        const buffer = Buffer.from(await response.arrayBuffer());
+        res.set('Content-Type', response.headers.get('content-type') || 'audio/mpeg');
+        res.send(buffer);
+    } catch (err) {
+        if (err instanceof VoiceGatewayDownError) {
+            return res.status(503).json({ error: err.message, connected: false });
+        }
+        // 504: nội dung quá dài chứ không phải server hỏng — không đổ vào ErrorLogs/Telegram.
+        if (err instanceof VoiceTimeoutError) {
+            return res.status(504).json({ error: err.message });
+        }
+        logError({ source: 'aiController.synthesizeSpeech', message: err.message, stack: err.stack, userId: req.user?.UserID, method: req.method, path: req.originalUrl });
+        res.status(500).json({ error: 'Lỗi tạo giọng đọc: ' + err.message });
     }
 };

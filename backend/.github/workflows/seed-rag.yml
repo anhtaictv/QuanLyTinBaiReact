@@ -1,0 +1,27 @@
+name: Seed RAG knowledge base
+
+# Chay tay khi can nap/lam moi kho tri thuc RAG (dia danh Dak Lak, tom tat Luat Bao chi...).
+# KHONG gop vao deploy-windows.yml: goi AI Gateway de embed tung doan, neu gateway dang
+# tam ngung (trang thai binh thuong, xem aiController.js) se lam that bai ca buoc migration
+# va sap do luon deploy chinh - tach rieng de loi o day khong anh huong pipeline deploy.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  PM2_HOME: C:\Users\Administrator\.pm2
+
+jobs:
+  seed:
+    runs-on: [self-hosted, qltin-vps]
+    environment: production
+    steps:
+      - name: Chay script nap RAG tren backend dang chay tren VPS
+        shell: powershell
+        working-directory: C:\WebApp\backend\backend
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:Path = "C:\Users\Administrator\AppData\Roaming\npm;$env:Path"
+          node scripts/seed-rag-knowledge.js

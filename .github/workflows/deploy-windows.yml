@@ -64,25 +64,70 @@ jobs:
           # (bcrypt) dang dung, unlink se loi EPERM va npm ci se xoa dat node_modules.
           pm2 stop qltin-backend
 
-          npm ci --omit=dev
+          # Tu day backend DANG TAT, nen moi duong thoat deu phai di qua finally de bat
+          # lai. Truoc day mot migration hong la site nam 502.3 cho toi khi co nguoi phat
+          # hien bang mat (da xay ra that: run 34735638382 ngay 13/09/2026).
+          $deployError = $null
+          try {
+            npm ci --omit=dev
+            # Native command khong nem exception du $ErrorActionPreference = "Stop" - phai
+            # tu doc $LASTEXITCODE, khong thi npm ci hong van chay tiep xuong migration.
+            if ($LASTEXITCODE -ne 0) { throw "npm ci that bai (exit code $LASTEXITCODE)" }
 
-          # Migration DB idempotent (IF NOT EXISTS...) - an toan chay lai moi lan deploy,
-          # khong can chay tay tren VPS nua. Bound timeout rieng cho buoc nay (khac
-          # poolPromise trong config/db.js retry vo han theo thiet ke cho server chinh)
-          # de 1 lan DB tam thoi chua san sang khong treo ca pipeline deploy.
-          foreach ($script in @('scripts/create-news-digest-table.js', 'scripts/add-device-to-push-subscriptions.js', 'scripts/create-post-approval-audit.js', 'scripts/add-photo-path-to-posts.js', 'scripts/drop-userid-unique-push-subscriptions.js')) {
-            Write-Output "Running migration: $script"
-            $proc = Start-Process -FilePath "node" -ArgumentList $script -NoNewWindow -PassThru
-            $proc.Handle | Out-Null   # bat buoc .NET cache handle ngay, khong ExitCode doc ra rong sau khi exit
-            if (-not $proc.WaitForExit(60000)) {
-              try { $proc.Kill() } catch {}
-              throw "Migration '$script' timed out sau 60s (DB co the chua san sang)"
+            # Migration DB idempotent (IF NOT EXISTS...) - an toan chay lai moi lan deploy,
+            # khong can chay tay tren VPS nua. Bound timeout rieng cho buoc nay (khac
+            # poolPromise trong config/db.js retry vo han theo thiet ke cho server chinh)
+            # de 1 lan DB tam thoi chua san sang khong treo ca pipeline deploy.
+            #
+            # 180s chu khong phai 60s: ban than script migration da cho MOI cau DDL toi
+            # 120s (DDL_TIMEOUT_MS trong scripts/create-*-table.js) vi DDL tren VPS nay do
+            # thuc te ~10s va cham hon nhieu khi SQL bi ep RAM. Tran ngoai nho hon tran
+            # trong nghia la workflow giet tien trinh dang chay dung - dung cai da lam
+            # deploy 13/09/2026 that bai ngay o script dau tien.
+            $migrationTimeoutMs = 180000
+            # Thu lai 3 lan, cach nhau 30s. Deploy 13/09/2026 hong o
+            # add-photo-path-to-posts.js voi "operation timed out for an unknown reason"
+            # sau dung 30s (= connectionTimeout trong config/db.js), roi chay tay ngay sau
+            # do lai OK trong vai giay - cau IF NOT EXISTS do thuc chat la no-op (cot da
+            # ton tai). Nghia la khong phai migration sai ma la SQL bi ep RAM dung luc
+            # npm ci chiem may (xem comment requestTimeout trong config/db.js). Migration
+            # deu idempotent nen chay lai la an toan.
+            $migrationRetries = 3
+            $migrationRetryDelaySec = 30
+            foreach ($script in @('scripts/create-news-digest-table.js', 'scripts/add-device-to-push-subscriptions.js', 'scripts/create-post-approval-audit.js', 'scripts/add-photo-path-to-posts.js', 'scripts/drop-userid-unique-push-subscriptions.js', 'scripts/create-style-profile-table.js')) {
+              for ($attempt = 1; $attempt -le $migrationRetries; $attempt++) {
+                Write-Output "Running migration: $script (lan $attempt/$migrationRetries)"
+                $proc = Start-Process -FilePath "node" -ArgumentList $script -NoNewWindow -PassThru
+                $proc.Handle | Out-Null   # bat buoc .NET cache handle ngay, khong ExitCode doc ra rong sau khi exit
+                if (-not $proc.WaitForExit($migrationTimeoutMs)) {
+                  try { $proc.Kill() } catch {}
+                  $failure = "Migration '$script' timed out sau $($migrationTimeoutMs / 1000)s (DB co the chua san sang)"
+                } elseif ($proc.ExitCode -ne 0) {
+                  $failure = "Migration '$script' that bai (exit code $($proc.ExitCode))"
+                } else {
+                  $failure = $null
+                }
+                if (-not $failure) { break }
+                if ($attempt -eq $migrationRetries) { throw $failure }
+                Write-Output "$failure - thu lai sau $($migrationRetryDelaySec)s"
+                Start-Sleep -Seconds $migrationRetryDelaySec
+              }
             }
-            if ($proc.ExitCode -ne 0) { throw "Migration '$script' that bai (exit code $($proc.ExitCode))" }
           }
-
-          pm2 restart qltin-backend --update-env
-          pm2 save
+          catch {
+            # Giu loi lai roi nem lai SAU finally: nem ngay tai day thi backend khong duoc
+            # bat lai, con de finally "nuot" loi thi pm2 restart tra exit code 0 va deploy
+            # hong bi bao thanh cong.
+            $deployError = $_
+          }
+          finally {
+            # Chay ca khi npm ci/migration hong: backend chay lai code cu con hon la site
+            # chet. Code moi da duoc copy vao roi nen neu chi migration hong thi lan restart
+            # nay da la ban moi - van phai fail step de nguoi deploy biet ma xu ly migration.
+            pm2 restart qltin-backend --update-env
+            pm2 save
+          }
+          if ($deployError) { throw $deployError }
 
       - name: Build frontend
         shell: powershell
@@ -111,13 +156,20 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
+          # VPS chi co 4GB RAM va SQL Server bi ep co lai, nen server.js phai cho
+          # connectWithRetry noi duoc toi localhost:1433 roi moi listen :5001. Do that
+          # 14/09/2026: mat 255 giay moi healthy. Cua so 30 giay cu lam deploy bao fail
+          # trong khi backend van len binh thuong vai phut sau - bao dong gia con te hon
+          # khong bao gi ca, vi lan sau deploy hong that se khong ai tin.
           $ok = $false
-          for ($i = 0; $i -lt 15; $i++) {
-            Start-Sleep -Seconds 2
+          $waited = 0
+          for ($i = 0; $i -lt 90; $i++) {
+            Start-Sleep -Seconds 5
+            $waited += 5
             try {
               $resp = Invoke-WebRequest -Uri "http://127.0.0.1:5001/api/health" -UseBasicParsing -TimeoutSec 5
               if ($resp.StatusCode -eq 200) { $ok = $true; break }
             } catch {}
           }
-          if (-not $ok) { throw "qltin-backend did not report healthy after restart" }
-          Write-Output "qltin-backend healthy."
+          if (-not $ok) { throw "qltin-backend did not report healthy after restart (da cho 7.5 phut)" }
+          Write-Output "qltin-backend healthy sau $waited giay."

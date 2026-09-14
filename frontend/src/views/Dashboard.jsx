@@ -1,14 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { IconList, IconPlus, IconUsers, IconTrendingUp, IconServer, IconDatabase } from '../components/icons';
+import { IconList, IconPlus, IconUsers, IconTrendingUp, IconServer, IconDatabase, IconRobot, IconMic } from '../components/icons';
+import { getAiHealth } from '../services/aiService';
 import LoadingState from '../components/LoadingState';
+import UpcomingTasksPanel from '../components/tasks/UpcomingTasksPanel';
 
 const Dashboard = () => {
     const [stats, setStats] = useState({ TotalPosts: 0, TotalUsers: 0, PostsToday: 0 });
     const [chartData, setChartData] = useState([]); // State lưu dữ liệu biểu đồ
     const [loading, setLoading] = useState(true);
+    // null = chưa biết (đang hỏi /ai/health), object/false = kết quả thật
+    const [aiOnline, setAiOnline] = useState(null);
     const [aiHealth, setAiHealth] = useState(null);
+    // Riêng PhoWhisper: server khác trên máy A, có thể tắt độc lập với AI Gateway/Ollama.
+    const [whisperOnline, setWhisperOnline] = useState(null);
 
     useEffect(() => {
         const fetchStats = async () => {
@@ -58,6 +64,17 @@ const Dashboard = () => {
             }
         };
         fetchStats();
+
+        // Gọi riêng, không chặn phần thống kê nếu AI Gateway chậm/tắt.
+        getAiHealth()
+            .then(res => {
+                setAiOnline(!!res.data?.connected);
+                setWhisperOnline(!!res.data?.whisperConnected);
+            })
+            .catch(() => {
+                setAiOnline(false);
+                setWhisperOnline(false);
+            });
     }, []);
 
     const statCards = [
@@ -131,6 +148,9 @@ const Dashboard = () => {
                 </ResponsiveContainer>
             </div>
 
+            {/* Việc được giao sắp tới hạn — tự ẩn khi không có việc nào */}
+            <UpcomingTasksPanel />
+
             {/* Trạng thái kết nối */}
             <div style={panelStyle}>
                 <h3 style={{ fontSize: 15.5, marginBottom: 6 }}>Trạng thái hệ thống</h3>
@@ -147,26 +167,43 @@ const Dashboard = () => {
                         <StatusPill label="Connected" />
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5 }}>
-                        <IconServer size={16} style={{ color: 'var(--text-muted)' }} />
-                        <span>AI Gateway</span>
-                        <StatusPill label={aiHealth?.aiGateway === 'online' ? 'Online' : 'Offline'} variant={aiHealth?.aiGateway === 'online' ? 'success' : 'error'} />
+                        <IconRobot size={16} style={{ color: 'var(--text-muted)' }} />
+                        <span>AI Gateway (biên tập, RAG, trợ lý chat)</span>
+                        {aiOnline === null
+                            ? <StatusPill label="Đang kiểm tra…" variant="muted" />
+                            : <StatusPill label={aiOnline ? 'Online' : 'Offline'} variant={aiOnline ? 'success' : 'error'} />}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5 }}>
-                        <IconServer size={16} style={{ color: 'var(--text-muted)' }} />
-                        <span>PhoWhisper (Transcribe)</span>
-                        <StatusPill label={aiHealth?.phoWhisper === 'online' ? 'Online' : 'Offline'} variant={aiHealth?.phoWhisper === 'online' ? 'success' : 'error'} />
+                        <IconMic size={16} style={{ color: 'var(--text-muted)' }} />
+                        <span>PhoWhisper (rã băng phỏng vấn)</span>
+                        {whisperOnline === null
+                            ? <StatusPill label="Đang kiểm tra…" variant="muted" />
+                            : <StatusPill label={whisperOnline ? 'Online' : 'Offline'} variant={whisperOnline ? 'success' : 'error'} />}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5 }}>
-                        <IconServer size={16} style={{ color: 'var(--text-muted)' }} />
+                        <IconRobot size={16} style={{ color: 'var(--text-muted)' }} />
                         <span>Voice Studio</span>
-                        <StatusPill label={aiHealth?.voiceStudio === 'online' ? 'Online' : 'Offline'} variant={aiHealth?.voiceStudio === 'online' ? 'success' : 'error'} />
+                        {aiHealth?.voiceStudio
+                            ? <StatusPill label="Online" variant="success" />
+                            : <StatusPill label="Offline" variant="error" />}
                     </div>
                 </div>
+                {aiOnline === false && (
+                    <p style={{ color: 'var(--text-muted)', fontSize: 12.5, marginTop: 12 }}>
+                        AI Gateway không kết nối được (máy chạy Ollama có thể đang tắt/ngủ) — các tính năng biên tập/RAG/trợ lý chat sẽ tạm không dùng được.
+                    </p>
+                )}
+                {aiOnline !== false && whisperOnline === false && (
+                    <p style={{ color: 'var(--text-muted)', fontSize: 12.5, marginTop: 12 }}>
+                        PhoWhisper không kết nối được (server riêng trên máy A) — rã băng phỏng vấn sẽ tạm không dùng được, các tính năng AI khác vẫn hoạt động bình thường.
+                    </p>
+                )}
             </div>
         </div>
     );
 };
 
+<<<<<<< HEAD
 const StatusPill = ({ label, variant = 'success' }) => {
     const bgColor = variant === 'error' ? 'var(--error-soft)' : 'var(--success-soft)';
     const textColor = variant === 'error' ? 'var(--error)' : 'var(--success)';
@@ -179,6 +216,23 @@ const StatusPill = ({ label, variant = 'success' }) => {
             fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 999
         }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor }} />
+=======
+const PILL_TONES = {
+    success: { fg: 'var(--success)', bg: 'var(--success-soft)' },
+    danger: { fg: 'var(--danger)', bg: 'var(--danger-soft)' },
+    muted: { fg: 'var(--text-muted)', bg: 'var(--border)' },
+};
+
+const StatusPill = ({ label, tone = 'success' }) => {
+    const { fg, bg } = PILL_TONES[tone] || PILL_TONES.success;
+    return (
+        <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            marginLeft: 'auto', background: bg, color: fg,
+            fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 999
+        }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: fg }} />
+>>>>>>> 8ddbcff60fc5f8c7ef768abce3bcdf009734175e
             {label}
         </span>
     );

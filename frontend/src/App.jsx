@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import Login from './views/Login';
 import ForgotPassword from './views/ForgotPassword';
@@ -19,6 +19,10 @@ const Chat            = lazy(() => import('./views/Chat'));
 const NewsDigest      = lazy(() => import('./views/NewsDigest'));
 const AIKnowledge     = lazy(() => import('./views/AIKnowledge'));
 const AiAssistant     = lazy(() => import('./views/AiAssistant'));
+const TaskCalendar    = lazy(() => import('./views/TaskCalendar'));
+const TaskAssign      = lazy(() => import('./views/TaskAssign'));
+const InterviewTranscribe = lazy(() => import('./views/InterviewTranscribe'));
+const AiVoiceStudio   = lazy(() => import('./views/AiVoiceStudio'));
 
 // 1. Component bảo vệ Đăng nhập: Chưa đăng nhập thì không cho vào App
 const ProtectedRoute = () => {
@@ -42,7 +46,28 @@ const AdminRoute = () => {
   return <Outlet />;
 };
 
+// Trước đây SW chỉ được đăng ký lúc user bật push notification (MainLayout.jsx), nên ai
+// không bật push thì không có SW (không sao), nhưng ai đã bật thì kẹt mãi ở bản JS/CSS
+// lúc SW cài lần đầu — sw.js giờ đã tự skipWaiting()/clientsClaim(), còn ở đây chỉ cần
+// đăng ký ngay khi mở app (không đợi user bật push) + tự reload 1 lần khi SW mới nắm
+// quyền, để bản deploy mới tới tay user mà không cần họ đóng hết tab thủ công.
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('/sw.js');
+
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return;
+    reloading = true;
+    window.location.reload();
+  });
+}
+
 function App() {
+  useEffect(() => {
+    registerServiceWorker();
+  }, []);
+
   return (
     <Router>
       <Suspense fallback={<LoadingState label="Đang tải trang..." padding={80} />}>
@@ -66,6 +91,8 @@ function App() {
               <Route path="news/:id" element={<PostDetail />} />
               <Route path="news-digest" element={<NewsDigest />} />
               <Route path="ai-assistant" element={<AiAssistant />} />
+              <Route path="transcribe" element={<InterviewTranscribe />} />
+              <Route path="ai-voice" element={<AiVoiceStudio />} />
 
               {/* ✅ SỬA: dùng :postId để khớp với useParams() trong DocEditor.jsx */}
               <Route path="doc-editor/:postId" element={<DocEditor />} />
@@ -73,6 +100,12 @@ function App() {
               <Route path="change-password" element={<ChangePassword />} />
               <Route path="chat" element={<Chat />} />
               <Route path="chat/:conversationId" element={<Chat />} />
+
+              {/* Lịch công việc: ai cũng xem được việc của mình. Trang giao việc để ở
+                  đây (không nằm trong AdminRoute) vì "Người duyệt" cũng được giao việc,
+                  mà AdminRoute lại không cho role đó vào — backend mới là chốt chặn. */}
+              <Route path="tasks" element={<TaskCalendar />} />
+              <Route path="tasks/assign" element={<TaskAssign />} />
 
               {/* CẤP ĐỘ 2: Chỉ dành riêng cho quyền Admin/Cấp cao */}
               <Route element={<AdminRoute />}>

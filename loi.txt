@@ -1,0 +1,9 @@
+?? Windows Event Log: Error
+Server: MeoBeo
+Log: Application
+Nguon: IIS AspNetCore Module V2
+Event ID: 1018
+Thoi gian: 2026-07-10 09:23:35
+Chi tiet: Application '/LM/W3SVC/2/ROOT' with physical root 'C:\inetpub\wwwroot\QuanLyTinBaiAPI\' hit unexpected managed exception, exception code = '0xe0434352'. First 30KB characters of captured stdout and stderr logs:
+Unhandled exception. System.InvalidOperationException: Instance failure.
+   at Microsoft.Data.SqlClient.TdsParser.Connect(ServerInfo serverInfo, SqlInternalConnectionTds connHandler, Boolean ignoreSniOpenTimeout, Int64 timerExpire, SqlConnectionString connectionOptions, Boolean withFail...
