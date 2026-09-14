@@ -8,17 +8,20 @@ const Dashboard = () => {
     const [stats, setStats] = useState({ TotalPosts: 0, TotalUsers: 0, PostsToday: 0 });
     const [chartData, setChartData] = useState([]); // State lưu dữ liệu biểu đồ
     const [loading, setLoading] = useState(true);
+    const [aiHealth, setAiHealth] = useState(null);
 
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                const [postsRes, usersRes] = await Promise.all([
+                const [postsRes, usersRes, aiRes] = await Promise.all([
                     api.get('/news'),
-                    api.get('/users/basic')
+                    api.get('/users/basic'),
+                    api.get('/ai/health').catch(() => ({ data: { aiGateway: 'offline', phoWhisper: 'offline', voiceStudio: 'offline' } }))
                 ]);
 
                 const posts = Array.isArray(postsRes.data) ? postsRes.data : (postsRes.data.recordset || []);
                 const users = Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data.recordset || []);
+                setAiHealth(aiRes.data);
 
                 // 1. Tính toán thống kê nhanh
                 const todayStr = new Date().toDateString();
@@ -143,21 +146,42 @@ const Dashboard = () => {
                         <span>Database SQL Server</span>
                         <StatusPill label="Connected" />
                     </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5 }}>
+                        <IconServer size={16} style={{ color: 'var(--text-muted)' }} />
+                        <span>AI Gateway</span>
+                        <StatusPill label={aiHealth?.aiGateway === 'online' ? 'Online' : 'Offline'} variant={aiHealth?.aiGateway === 'online' ? 'success' : 'error'} />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5 }}>
+                        <IconServer size={16} style={{ color: 'var(--text-muted)' }} />
+                        <span>PhoWhisper (Transcribe)</span>
+                        <StatusPill label={aiHealth?.phoWhisper === 'online' ? 'Online' : 'Offline'} variant={aiHealth?.phoWhisper === 'online' ? 'success' : 'error'} />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5 }}>
+                        <IconServer size={16} style={{ color: 'var(--text-muted)' }} />
+                        <span>Voice Studio</span>
+                        <StatusPill label={aiHealth?.voiceStudio === 'online' ? 'Online' : 'Offline'} variant={aiHealth?.voiceStudio === 'online' ? 'success' : 'error'} />
+                    </div>
                 </div>
             </div>
         </div>
     );
 };
 
-const StatusPill = ({ label }) => (
-    <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        marginLeft: 'auto', background: 'var(--success-soft)', color: 'var(--success)',
-        fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 999
-    }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)' }} />
-        {label}
-    </span>
-);
+const StatusPill = ({ label, variant = 'success' }) => {
+    const bgColor = variant === 'error' ? 'var(--error-soft)' : 'var(--success-soft)';
+    const textColor = variant === 'error' ? 'var(--error)' : 'var(--success)';
+    const dotColor = variant === 'error' ? 'var(--error)' : 'var(--success)';
+
+    return (
+        <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            marginLeft: 'auto', background: bgColor, color: textColor,
+            fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 999
+        }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor }} />
+            {label}
+        </span>
+    );
+};
 
 export default Dashboard;
